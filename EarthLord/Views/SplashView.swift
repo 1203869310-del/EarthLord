@@ -8,7 +8,11 @@
 import SwiftUI
 
 /// 启动页视图
+/// 负责显示启动画面并检查用户会话状态
 struct SplashView: View {
+    /// 完成回调，参数为是否已认证
+    let onComplete: (Bool) -> Void
+
     /// 是否显示加载动画
     @State private var isAnimating = false
 
@@ -21,8 +25,8 @@ struct SplashView: View {
     /// Logo 透明度
     @State private var logoOpacity: Double = 0
 
-    /// 是否完成加载
-    @Binding var isFinished: Bool
+    /// 认证管理器
+    private var authManager: AuthManager { AuthManager.shared }
 
     var body: some View {
         ZStack {
@@ -129,7 +133,7 @@ struct SplashView: View {
         }
         .onAppear {
             startAnimations()
-            simulateLoading()
+            performStartupTasks()
         }
     }
 
@@ -148,27 +152,40 @@ struct SplashView: View {
         }
     }
 
-    // MARK: - 模拟加载
+    // MARK: - 启动任务
 
-    private func simulateLoading() {
-        // 模拟加载过程
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            loadingText = "正在加载资源..."
-        }
+    /// 执行启动任务：检查会话状态
+    private func performStartupTasks() {
+        Task {
+            // 阶段1：初始化
+            await updateLoadingText("正在初始化...")
+            try? await Task.sleep(for: .milliseconds(500))
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            loadingText = "准备就绪"
-        }
+            // 阶段2：检查登录状态
+            await updateLoadingText("正在检查登录状态...")
+            await authManager.checkSession()
+            try? await Task.sleep(for: .milliseconds(500))
 
-        // 完成加载，进入主界面
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                isFinished = true
+            // 阶段3：准备就绪
+            await updateLoadingText("准备就绪")
+            try? await Task.sleep(for: .milliseconds(300))
+
+            // 完成启动，通知是否已认证
+            await MainActor.run {
+                onComplete(authManager.isAuthenticated)
             }
         }
+    }
+
+    /// 更新加载文字（主线程）
+    @MainActor
+    private func updateLoadingText(_ text: String) {
+        loadingText = text
     }
 }
 
 #Preview {
-    SplashView(isFinished: .constant(false))
+    SplashView { isAuthenticated in
+        print("启动完成，已认证：\(isAuthenticated)")
+    }
 }

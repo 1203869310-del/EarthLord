@@ -8,7 +8,8 @@
 import SwiftUI
 
 struct MainTabView: View {
-    @State private var selectedTab = 0
+    /// 当前选中的 Tab（默认为个人页面）
+    @State private var selectedTab = 2
 
     var body: some View {
         TabView(selection: $selectedTab) {
