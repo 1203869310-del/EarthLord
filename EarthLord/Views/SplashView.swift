@@ -156,31 +156,23 @@ struct SplashView: View {
 
     /// 执行启动任务：检查会话状态
     private func performStartupTasks() {
-        Task {
+        Task { @MainActor in
             // 阶段1：初始化
-            await updateLoadingText("正在初始化...")
+            loadingText = "正在初始化..."
             try? await Task.sleep(for: .milliseconds(500))
 
             // 阶段2：检查登录状态
-            await updateLoadingText("正在检查登录状态...")
+            loadingText = "正在检查登录状态..."
             await authManager.checkSession()
             try? await Task.sleep(for: .milliseconds(500))
 
             // 阶段3：准备就绪
-            await updateLoadingText("准备就绪")
+            loadingText = "准备就绪"
             try? await Task.sleep(for: .milliseconds(300))
 
             // 完成启动，通知是否已认证
-            await MainActor.run {
-                onComplete(authManager.isAuthenticated)
-            }
+            onComplete(authManager.isAuthenticated)
         }
-    }
-
-    /// 更新加载文字（主线程）
-    @MainActor
-    private func updateLoadingText(_ text: LocalizedStringKey) {
-        loadingText = text
     }
 }
 
