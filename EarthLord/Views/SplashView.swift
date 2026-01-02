@@ -17,7 +17,7 @@ struct SplashView: View {
     @State private var isAnimating = false
 
     /// 加载进度文字
-    @State private var loadingText = "正在初始化..."
+    @State private var loadingText: LocalizedStringKey = "正在初始化..."
 
     /// Logo 缩放动画
     @State private var logoScale: CGFloat = 0.8
@@ -179,7 +179,7 @@ struct SplashView: View {
 
     /// 更新加载文字（主线程）
     @MainActor
-    private func updateLoadingText(_ text: String) {
+    private func updateLoadingText(_ text: LocalizedStringKey) {
         loadingText = text
     }
 }

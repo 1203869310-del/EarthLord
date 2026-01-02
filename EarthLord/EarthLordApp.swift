@@ -12,6 +12,9 @@ struct EarthLordApp: App {
     /// 认证管理器 - 全局状态
     @StateObject private var authManager = AuthManager.shared
 
+    /// 语言管理器 - 全局状态
+    @StateObject private var languageManager = LanguageManager.shared
+
     /// 应用状态
     @State private var appState: AppState = .splash
 
@@ -68,6 +71,8 @@ struct EarthLordApp: App {
                     }
                 }
             }
+            // 应用语言设置
+            .environment(\.locale, languageManager.activeLocale)
         }
     }
 }

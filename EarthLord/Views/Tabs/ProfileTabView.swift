@@ -125,8 +125,23 @@ struct ProfileTabView: View {
 
             Divider().background(ApocalypseTheme.textMuted.opacity(0.2))
 
-            ProfileMenuItem(icon: "gearshape.fill", title: "设置", color: ApocalypseTheme.textSecondary) {
-                // TODO: 设置
+            NavigationLink(destination: SettingsView()) {
+                HStack(spacing: 12) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title3)
+                        .foregroundColor(ApocalypseTheme.textSecondary)
+                        .frame(width: 30)
+
+                    Text("设置")
+                        .foregroundColor(ApocalypseTheme.textPrimary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(ApocalypseTheme.textMuted)
+                }
+                .padding()
             }
 
             Divider().background(ApocalypseTheme.textMuted.opacity(0.2))
@@ -177,7 +192,7 @@ struct ProfileTabView: View {
 // MARK: - 统计项组件
 struct StatItem: View {
     let value: String
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 4) {
@@ -197,7 +212,7 @@ struct StatItem: View {
 // MARK: - 菜单项组件
 struct ProfileMenuItem: View {
     let icon: String
-    let title: String
+    let title: LocalizedStringKey
     let color: Color
     let action: () -> Void
 

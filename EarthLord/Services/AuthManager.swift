@@ -411,6 +411,62 @@ final class AuthManager: ObservableObject {
         isLoading = false
     }
 
+    /// 删除账户响应结构
+    private struct DeleteAccountResponse: Decodable {
+        let success: Bool?
+        let message: String?
+        let error: String?
+        let deleted_user_id: String?
+    }
+
+    /// 删除账户
+    /// 调用边缘函数删除用户账户
+    /// - Returns: 是否删除成功
+    @discardableResult
+    func deleteAccount() async -> Bool {
+        print("[AuthManager] 开始删除账户流程...")
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            print("[AuthManager] 正在调用删除账户边缘函数...")
+
+            // 调用边缘函数删除账户
+            let response: DeleteAccountResponse = try await supabase.functions.invoke(
+                "delete-account",
+                options: .init(method: .post)
+            )
+
+            print("[AuthManager] 收到响应: success=\(response.success ?? false), message=\(response.message ?? "无")")
+
+            if response.success == true {
+                print("[AuthManager] 账户删除成功")
+                // 删除成功，重置状态
+                resetState()
+                isLoading = false
+                return true
+            } else if let error = response.error {
+                print("[AuthManager] 删除失败: \(error)")
+                errorMessage = error
+                isLoading = false
+                return false
+            }
+
+            // 如果没有明确的成功/失败，假设成功
+            print("[AuthManager] 响应解析完成，重置状态")
+            resetState()
+            isLoading = false
+            return true
+
+        } catch {
+            print("[AuthManager] 删除账户失败: \(error)")
+            errorMessage = "删除账户失败：\(error.localizedDescription)"
+            isLoading = false
+            return false
+        }
+    }
+
     /// 检查当前会话状态
     ///
     /// 应用启动时调用，恢复登录状态
@@ -423,7 +479,10 @@ final class AuthManager: ObservableObject {
 
             // 检查用户是否通过邮箱密码注册（有 email identity）
             // 只有完成了密码设置的用户才能自动登录
-            let hasEmailProvider = session.user.appMetadata["provider"] as? String == "email"
+            var hasEmailProvider = false
+            if case .string(let provider) = session.user.appMetadata["provider"] {
+                hasEmailProvider = provider == "email"
+            }
             let hasIdentities = !(session.user.identities?.isEmpty ?? true)
 
             if hasEmailProvider && hasIdentities {

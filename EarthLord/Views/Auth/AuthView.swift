@@ -742,7 +742,7 @@ struct AuthTextField: View {
 
 // MARK: - 自定义按钮
 struct AuthButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let action: () -> Void
 
     var body: some View {
