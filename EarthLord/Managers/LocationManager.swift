@@ -190,6 +190,9 @@ final class LocationManager: NSObject, ObservableObject {
         }
 
         print("🚀 [路径追踪] 开始追踪，定时器间隔: \(trackingInterval)秒")
+
+        // 【日志】记录开始追踪
+        TerritoryLogger.shared.log("开始圈地追踪", type: .info)
     }
 
     /// 停止路径追踪
@@ -206,6 +209,9 @@ final class LocationManager: NSObject, ObservableObject {
         lastLocationTimestamp = nil
 
         print("🛑 [路径追踪] 停止追踪，共记录 \(pathCoordinates.count) 个点")
+
+        // 【日志】记录停止追踪
+        TerritoryLogger.shared.log("停止追踪，共 \(pathCoordinates.count) 个点", type: .info)
     }
 
     /// 清除路径
@@ -238,17 +244,18 @@ final class LocationManager: NSObject, ObservableObject {
         }
 
         // 检查是否需要记录（距离判断）
+        var distanceFromLast: Double = 0
         if let lastCoordinate = pathCoordinates.last {
             let lastLoc = CLLocation(latitude: lastCoordinate.latitude, longitude: lastCoordinate.longitude)
-            let distance = location.distance(from: lastLoc)
+            distanceFromLast = location.distance(from: lastLoc)
 
             // 距离小于最小阈值，跳过
-            if distance < minimumDistance {
-                print("📏 [路径追踪] 移动距离 \(String(format: "%.1f", distance))米 < \(minimumDistance)米，跳过")
+            if distanceFromLast < minimumDistance {
+                print("📏 [路径追踪] 移动距离 \(String(format: "%.1f", distanceFromLast))米 < \(minimumDistance)米，跳过")
                 return
             }
 
-            print("📏 [路径追踪] 移动距离 \(String(format: "%.1f", distance))米，记录新点")
+            print("📏 [路径追踪] 移动距离 \(String(format: "%.1f", distanceFromLast))米，记录新点")
         }
 
         // 记录新点
@@ -256,6 +263,9 @@ final class LocationManager: NSObject, ObservableObject {
         pathUpdateVersion += 1
 
         print("📍 [路径追踪] 记录第 \(pathCoordinates.count) 个点: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+
+        // 【日志】记录新点
+        TerritoryLogger.shared.log("记录第 \(pathCoordinates.count) 个点，距上点 \(String(format: "%.1f", distanceFromLast))m", type: .info)
 
         // 【闭环检测】检查是否形成闭环
         checkPathClosure()
@@ -300,8 +310,12 @@ final class LocationManager: NSObject, ObservableObject {
         if speedKmh > 30 {
             speedWarning = "速度过快（\(String(format: "%.0f", speedKmh)) km/h），追踪已暂停"
             isOverSpeed = true
-            stopPathTracking()
             print("🚨 [速度检测] 速度 > 30 km/h，自动停止追踪！")
+
+            // 【日志】记录超速停止（先记录日志再停止，否则会先记录停止日志）
+            TerritoryLogger.shared.log("超速 \(String(format: "%.0f", speedKmh)) km/h，已停止追踪", type: .error)
+
+            stopPathTracking()
             return false
         }
 
@@ -310,6 +324,9 @@ final class LocationManager: NSObject, ObservableObject {
             speedWarning = "移动速度较快（\(String(format: "%.0f", speedKmh)) km/h）"
             isOverSpeed = true
             print("⚠️ [速度检测] 速度 > 15 km/h，显示警告")
+
+            // 【日志】记录速度警告
+            TerritoryLogger.shared.log("速度较快 \(String(format: "%.0f", speedKmh)) km/h", type: .warning)
             return true
         }
 
@@ -326,6 +343,9 @@ final class LocationManager: NSObject, ObservableObject {
 
     /// 检查路径是否形成闭环
     private func checkPathClosure() {
+        // 【关键】已闭环则不再检测，防止重复触发
+        guard !isPathClosed else { return }
+
         // 路径点数不足，不检测
         guard pathCoordinates.count >= minimumPathPoints else {
             print("🔄 [闭环检测] 点数 \(pathCoordinates.count) < \(minimumPathPoints)，跳过检测")
@@ -344,11 +364,17 @@ final class LocationManager: NSObject, ObservableObject {
 
         print("🔄 [闭环检测] 距起点 \(String(format: "%.1f", distanceToStart)) 米")
 
+        // 【日志】记录距起点距离（≥10个点后才记录）
+        TerritoryLogger.shared.log("距起点 \(String(format: "%.1f", distanceToStart))m (需≤30m)", type: .info)
+
         // 距离 ≤ 阈值，判定为闭环
         if distanceToStart <= closureDistanceThreshold {
             isPathClosed = true
             pathUpdateVersion += 1  // 触发 UI 更新
             print("✅ [闭环检测] 闭环成功！距起点 \(String(format: "%.1f", distanceToStart)) 米 ≤ \(closureDistanceThreshold) 米")
+
+            // 【日志】记录闭环成功
+            TerritoryLogger.shared.log("闭环成功！距起点 \(String(format: "%.1f", distanceToStart))m", type: .success)
         }
     }
 }

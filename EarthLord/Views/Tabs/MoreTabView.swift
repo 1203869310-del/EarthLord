@@ -13,9 +13,9 @@ struct MoreTabView: View {
             List {
                 Section("开发者工具") {
                     NavigationLink {
-                        SupabaseTestView()
+                        TestMenuView()
                     } label: {
-                        Label("Supabase 连接测试", systemImage: "network")
+                        Label("开发测试", systemImage: "hammer.fill")
                     }
                 }
             }

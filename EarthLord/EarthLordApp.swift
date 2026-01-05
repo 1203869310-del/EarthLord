@@ -15,6 +15,9 @@ struct EarthLordApp: App {
     /// 语言管理器 - 全局状态
     @StateObject private var languageManager = LanguageManager.shared
 
+    /// 定位管理器 - 全局状态（用于圈地测试页面监听追踪状态）
+    @StateObject private var locationManager = LocationManager()
+
     /// 应用状态
     @State private var appState: AppState = .splash
 
@@ -50,6 +53,7 @@ struct EarthLordApp: App {
                     MainTabView()
                         .transition(.opacity)
                         .environmentObject(authManager)
+                        .environmentObject(locationManager)
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: appState)

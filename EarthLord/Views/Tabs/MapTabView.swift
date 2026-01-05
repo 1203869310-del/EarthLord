@@ -14,8 +14,8 @@ struct MapTabView: View {
 
     // MARK: - State
 
-    /// 定位管理器
-    @StateObject private var locationManager = LocationManager()
+    /// 定位管理器（使用 EnvironmentObject 与其他页面共享）
+    @EnvironmentObject var locationManager: LocationManager
 
     /// 用户位置（从地图回传）
     @State private var userLocation: CLLocationCoordinate2D?
@@ -363,4 +363,5 @@ struct MapTabView: View {
 
 #Preview {
     MapTabView()
+        .environmentObject(LocationManager())
 }
