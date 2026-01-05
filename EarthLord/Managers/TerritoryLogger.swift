@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine  // @Published 需要这个框架
 
 // MARK: - 日志类型枚举
 
