@@ -23,6 +23,9 @@ struct MapTabView: View {
     /// 是否已完成首次定位
     @State private var hasLocatedUser = false
 
+    /// 是否显示验证结果横幅
+    @State private var showValidationBanner = false
+
     // MARK: - Body
 
     var body: some View {
@@ -48,9 +51,9 @@ struct MapTabView: View {
                     speedWarningBanner
                 }
 
-                // 闭环成功提示
-                if locationManager.isPathClosed {
-                    closureSuccessBanner
+                // 验证结果横幅（根据验证结果显示成功或失败）
+                if showValidationBanner {
+                    validationResultBanner
                 }
 
                 Spacer()
@@ -70,6 +73,23 @@ struct MapTabView: View {
                 locationManager.requestPermission()
             } else if locationManager.isAuthorized {
                 locationManager.startUpdatingLocation()
+            }
+        }
+        // 监听闭环状态，闭环后根据验证结果显示横幅
+        .onReceive(locationManager.$isPathClosed) { isClosed in
+            if isClosed {
+                // 闭环后延迟一点点，等待验证结果
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation {
+                        showValidationBanner = true
+                    }
+                    // 3 秒后自动隐藏
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        withAnimation {
+                            showValidationBanner = false
+                        }
+                    }
+                }
             }
         }
     }
@@ -284,33 +304,32 @@ struct MapTabView: View {
         }
     }
 
-    // MARK: - Closure Success Banner
+    // MARK: - Validation Result Banner
 
-    /// 闭环成功提示横幅
-    private var closureSuccessBanner: some View {
-        HStack {
-            // 成功图标
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
+    /// 验证结果横幅（根据验证结果显示成功或失败）
+    private var validationResultBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: locationManager.territoryValidationPassed
+                  ? "checkmark.circle.fill"
+                  : "xmark.circle.fill")
+                .font(.body)
 
-            // 成功文字
-            Text("圈地成功！区域已标记")
-                .font(.system(size: 14, weight: .medium))
-
-            Spacer()
-
-            // 显示点数
-            Text("\(locationManager.pathPointCount) 点")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.white.opacity(0.2))
-                .clipShape(Capsule())
+            if locationManager.territoryValidationPassed {
+                Text("圈地成功！领地面积: \(String(format: "%.0f", locationManager.calculatedArea))m²")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            } else {
+                Text(locationManager.territoryValidationError ?? "验证失败")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
         }
         .foregroundColor(.white)
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.green)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(locationManager.territoryValidationPassed ? Color.green : Color.red)
+        .padding(.top, 50)
     }
 
     // MARK: - Permission Denied Card
