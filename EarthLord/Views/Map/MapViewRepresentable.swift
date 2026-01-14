@@ -36,6 +36,18 @@ struct MapViewRepresentable: UIViewRepresentable {
     /// 路径是否已闭合（闭环后轨迹变色 + 填充多边形）
     var isPathClosed: Bool
 
+    /// 已加载的领地列表
+    var territories: [Territory]
+
+    /// 当前用户 ID（用于区分自己的领地和他人的领地）
+    var currentUserId: String?
+
+    /// POI 列表（用于显示标记）
+    var pois: [POI]
+
+    /// 当前可搜刮的 POI（高亮显示）
+    var scavengablePOI: POI?
+
     // MARK: - UIViewRepresentable
 
     /// 创建 MKMapView
@@ -80,6 +92,12 @@ struct MapViewRepresentable: UIViewRepresentable {
     func updateUIView(_ mapView: MKMapView, context: Context) {
         // 更新轨迹显示（传入闭环状态）
         context.coordinator.updateTrackingPath(on: mapView, coordinates: trackingPath, isPathClosed: isPathClosed)
+
+        // 绘制已加载的领地
+        context.coordinator.drawTerritories(on: mapView, territories: territories, currentUserId: currentUserId)
+
+        // 绘制 POI 标记
+        context.coordinator.drawPOIs(on: mapView, pois: pois, scavengablePOI: scavengablePOI)
     }
 
     /// 创建 Coordinator
@@ -125,8 +143,46 @@ struct MapViewRepresentable: UIViewRepresentable {
         /// 当前路径是否已闭合（用于轨迹变色）
         private var isCurrentPathClosed = false
 
+        /// 当前 POI 标注列表
+        private var currentPOIAnnotations: [POIAnnotation] = []
+
         init(_ parent: MapViewRepresentable) {
             self.parent = parent
+        }
+
+        // MARK: - POI 绘制方法
+
+        /// 绘制 POI 标记
+        /// - Parameters:
+        ///   - mapView: 地图视图
+        ///   - pois: POI 列表
+        ///   - scavengablePOI: 当前可搜刮的 POI（高亮）
+        func drawPOIs(on mapView: MKMapView, pois: [POI], scavengablePOI: POI?) {
+            // 移除旧的 POI 标注
+            let oldAnnotations = mapView.annotations.compactMap { $0 as? POIAnnotation }
+            mapView.removeAnnotations(oldAnnotations)
+            currentPOIAnnotations.removeAll()
+
+            // 添加新的 POI 标注
+            for poi in pois {
+                // 坐标转换：WGS-84 → GCJ-02
+                let convertedCoord = CoordinateConverter.wgs84ToGcj02(poi.coordinate)
+
+                let annotation = POIAnnotation(
+                    poi: poi,
+                    isScavengable: poi.id == scavengablePOI?.id
+                )
+                annotation.coordinate = convertedCoord
+                annotation.title = poi.name
+                annotation.subtitle = poi.type.rawValue
+
+                mapView.addAnnotation(annotation)
+                currentPOIAnnotations.append(annotation)
+            }
+
+            if !pois.isEmpty {
+                print("📍 [POI渲染] 绘制 \(pois.count) 个 POI 标记")
+            }
         }
 
         // MARK: - 轨迹更新方法
@@ -185,6 +241,47 @@ struct MapViewRepresentable: UIViewRepresentable {
             print("🗺️ [轨迹渲染] 绘制 \(coordinates.count) 个点的轨迹，闭环状态: \(isPathClosed)")
         }
 
+        // MARK: - 领地绘制方法
+
+        /// 绘制已加载的领地
+        /// - Parameters:
+        ///   - mapView: 地图视图
+        ///   - territories: 领地数组
+        ///   - currentUserId: 当前用户 ID
+        func drawTerritories(on mapView: MKMapView, territories: [Territory], currentUserId: String?) {
+            // 移除旧的领地多边形（保留路径轨迹）
+            let territoryOverlays = mapView.overlays.filter { overlay in
+                if let polygon = overlay as? MKPolygon {
+                    return polygon.title == "mine" || polygon.title == "others"
+                }
+                return false
+            }
+            mapView.removeOverlays(territoryOverlays)
+
+            // 绘制每个领地
+            for territory in territories {
+                var coords = territory.toCoordinates()
+
+                // 坐标转换：WGS-84 → GCJ-02（中国大陆需要）
+                coords = CoordinateConverter.convertPath(coords)
+
+                guard coords.count >= 3 else { continue }
+
+                let polygon = MKPolygon(coordinates: coords, count: coords.count)
+
+                // 【关键】比较 userId 时必须统一大小写！
+                // 数据库存的是小写 UUID，但 iOS 的 uuidString 返回大写
+                let isMine = territory.userId.lowercased() == currentUserId?.lowercased()
+                polygon.title = isMine ? "mine" : "others"
+
+                mapView.addOverlay(polygon, level: .aboveRoads)
+            }
+
+            if !territories.isEmpty {
+                print("🗺️ [领地渲染] 绘制 \(territories.count) 个领地")
+            }
+        }
+
         // MARK: - MKMapViewDelegate
 
         /// 用户位置更新时调用（关键方法！）
@@ -219,18 +316,27 @@ struct MapViewRepresentable: UIViewRepresentable {
             }
         }
 
-        /// 【关键】渲染 Overlay（轨迹线 + 多边形填充）
+        /// 【关键】渲染 Overlay（轨迹线 + 多边形填充 + 领地多边形）
         /// 如果不实现这个方法，addOverlay 添加的轨迹不会显示！
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            // 处理 MKPolygon（闭环填充区域）
+            // 处理 MKPolygon（闭环填充区域 + 领地多边形）
             if let polygon = overlay as? MKPolygon {
                 let renderer = MKPolygonRenderer(polygon: polygon)
 
-                // 填充色：半透明绿色
-                renderer.fillColor = UIColor.systemGreen.withAlphaComponent(0.25)
-
-                // 边框色：绿色
-                renderer.strokeColor = UIColor.systemGreen
+                // 根据 title 区分领地类型
+                if polygon.title == "mine" {
+                    // 我的领地：绿色
+                    renderer.fillColor = UIColor.systemGreen.withAlphaComponent(0.25)
+                    renderer.strokeColor = UIColor.systemGreen
+                } else if polygon.title == "others" {
+                    // 他人领地：橙色
+                    renderer.fillColor = UIColor.systemOrange.withAlphaComponent(0.25)
+                    renderer.strokeColor = UIColor.systemOrange
+                } else {
+                    // 当前圈地的闭环多边形：绿色
+                    renderer.fillColor = UIColor.systemGreen.withAlphaComponent(0.25)
+                    renderer.strokeColor = UIColor.systemGreen
+                }
 
                 // 边框宽度
                 renderer.lineWidth = 2.0
@@ -274,15 +380,130 @@ struct MapViewRepresentable: UIViewRepresentable {
             // 地图瓦片加载完成
         }
 
-        /// 渲染用户位置标注（可自定义蓝点样式）
+        /// 渲染用户位置标注和 POI 标记
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             // 用户位置使用系统默认蓝点
             if annotation is MKUserLocation {
                 return nil
             }
+
+            // POI 标记
+            if let poiAnnotation = annotation as? POIAnnotation {
+                let identifier = "POIAnnotation"
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+
+                if annotationView == nil {
+                    annotationView = MKMarkerAnnotationView(annotation: poiAnnotation, reuseIdentifier: identifier)
+                    annotationView?.canShowCallout = true
+
+                    // 添加详情按钮
+                    let detailButton = UIButton(type: .detailDisclosure)
+                    annotationView?.rightCalloutAccessoryView = detailButton
+                } else {
+                    annotationView?.annotation = poiAnnotation
+                }
+
+                // 根据 POI 类型设置颜色和图标
+                let poi = poiAnnotation.poi
+
+                // 设置标记颜色
+                switch poi.type.color {
+                case "red":
+                    annotationView?.markerTintColor = .systemRed
+                case "green":
+                    annotationView?.markerTintColor = .systemGreen
+                case "gray":
+                    annotationView?.markerTintColor = .systemGray
+                case "purple":
+                    annotationView?.markerTintColor = .systemPurple
+                case "orange":
+                    annotationView?.markerTintColor = .systemOrange
+                default:
+                    annotationView?.markerTintColor = .systemBlue
+                }
+
+                // 设置图标
+                annotationView?.glyphImage = UIImage(systemName: poi.type.iconName)
+
+                // 可搜刮状态高亮
+                if poiAnnotation.isScavengable {
+                    annotationView?.markerTintColor = .systemYellow
+                    annotationView?.displayPriority = .required
+                    // 添加脉冲动画效果
+                    addPulseAnimation(to: annotationView)
+                } else {
+                    annotationView?.displayPriority = .defaultHigh
+                    annotationView?.layer.removeAllAnimations()
+                }
+
+                // 不可搜刮（冷却中）显示半透明
+                if !poi.canScavenge {
+                    annotationView?.alpha = 0.5
+                } else {
+                    annotationView?.alpha = 1.0
+                }
+
+                return annotationView
+            }
+
             return nil
         }
+
+        /// 添加脉冲动画效果
+        private func addPulseAnimation(to view: UIView?) {
+            guard let view = view else { return }
+
+            // 移除已有动画
+            view.layer.removeAnimation(forKey: "pulse")
+
+            // 创建脉冲动画
+            let pulse = CABasicAnimation(keyPath: "transform.scale")
+            pulse.duration = 0.8
+            pulse.fromValue = 1.0
+            pulse.toValue = 1.2
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+            view.layer.add(pulse, forKey: "pulse")
+        }
+
+        /// 点击标注附件按钮
+        func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+            if let poiAnnotation = view.annotation as? POIAnnotation {
+                print("📍 [POI] 点击详情: \(poiAnnotation.poi.name)")
+                // 这里可以通过 NotificationCenter 或其他方式通知外部显示详情页
+                NotificationCenter.default.post(
+                    name: .poiDetailRequested,
+                    object: poiAnnotation.poi
+                )
+            }
+        }
     }
+}
+
+// MARK: - POI 标注类
+
+/// POI 标注（用于地图显示）
+class POIAnnotation: NSObject, MKAnnotation {
+    let poi: POI
+    let isScavengable: Bool
+    dynamic var coordinate: CLLocationCoordinate2D
+    var title: String?
+    var subtitle: String?
+
+    init(poi: POI, isScavengable: Bool) {
+        self.poi = poi
+        self.isScavengable = isScavengable
+        self.coordinate = poi.coordinate
+        super.init()
+    }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let poiDetailRequested = Notification.Name("poiDetailRequested")
 }
 
 // MARK: - Preview
@@ -294,6 +515,10 @@ struct MapViewRepresentable: UIViewRepresentable {
         trackingPath: .constant([]),
         pathUpdateVersion: 0,
         isTracking: false,
-        isPathClosed: false
+        isPathClosed: false,
+        territories: [],
+        currentUserId: nil,
+        pois: [],
+        scavengablePOI: nil
     )
 }

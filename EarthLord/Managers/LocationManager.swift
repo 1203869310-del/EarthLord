@@ -61,7 +61,27 @@ final class LocationManager: NSObject, ObservableObject {
     /// 是否超速
     @Published var isOverSpeed: Bool = false
 
+    // MARK: - 路径碰撞检测 Published Properties
+
+    /// 路径碰撞警告信息
+    @Published var pathCollisionWarning: String?
+
+    /// 当前预警级别
+    @Published var currentWarningLevel: TerritoryWarningLevel = .safe
+
+    /// 距离最近领地的距离
+    @Published var distanceToNearestTerritory: Double?
+
     // MARK: - Private Properties
+
+    /// 缓存的他人领地数据（用于路径碰撞检测）
+    private var cachedOthersTerritories: [Territory] = []
+
+    /// 综合检测定时器（每10秒检测一次）
+    private var comprehensiveCheckTimer: Timer?
+
+    /// 综合检测间隔（秒）
+    private let comprehensiveCheckInterval: TimeInterval = 10.0
 
     /// CoreLocation 定位管理器
     private let locationManager = CLLocationManager()
@@ -195,6 +215,13 @@ final class LocationManager: NSObject, ObservableObject {
         isOverSpeed = false
         lastLocation = nil
         lastLocationTimestamp = nil
+        consecutiveHighSpeedCount = 0
+
+        // 重置路径碰撞检测状态
+        pathCollisionWarning = nil
+        cachedOthersTerritories = []
+        currentWarningLevel = .safe
+        distanceToNearestTerritory = nil
 
         // 确保定位正在运行
         startUpdatingLocation()
@@ -206,36 +233,74 @@ final class LocationManager: NSObject, ObservableObject {
             print("📍 [路径追踪] 记录起始点: \(location.coordinate.latitude), \(location.coordinate.longitude)")
         }
 
-        // 启动定时器，每 2 秒采点一次
+        // 启动采点定时器，每 2 秒采点一次
         pathUpdateTimer = Timer.scheduledTimer(withTimeInterval: trackingInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.recordPathPoint()
             }
         }
 
-        print("🚀 [路径追踪] 开始追踪，定时器间隔: \(trackingInterval)秒")
+        // 启动综合检测定时器，每 10 秒检测一次
+        comprehensiveCheckTimer = Timer.scheduledTimer(withTimeInterval: comprehensiveCheckInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.performComprehensiveCheck()
+            }
+        }
+
+        print("🚀 [路径追踪] 开始追踪，采点间隔: \(trackingInterval)秒，综合检测间隔: \(comprehensiveCheckInterval)秒")
 
         // 【日志】记录开始追踪
         TerritoryLogger.shared.log("开始圈地追踪", type: .info)
+
+        // 【异步】加载他人领地数据用于路径碰撞检测
+        Task { @MainActor in
+            await loadOthersTerritoriesForCollisionCheck()
+            // 加载完后立即进行一次检测
+            await performComprehensiveCheck()
+        }
     }
 
     /// 停止路径追踪
+    /// 会重置所有追踪和验证状态，防止重复上传
     func stopPathTracking() {
-        // 停止定时器
+        // 停止采点定时器
         pathUpdateTimer?.invalidate()
         pathUpdateTimer = nil
 
-        // 更新状态
+        // 停止综合检测定时器
+        comprehensiveCheckTimer?.invalidate()
+        comprehensiveCheckTimer = nil
+
+        let pointCount = pathCoordinates.count
+
+        // 重置追踪状态
         isTracking = false
+        pathCoordinates = []
+        pathUpdateVersion = 0
+        isPathClosed = false
+
+        // 重置验证状态
+        territoryValidationPassed = false
+        territoryValidationError = nil
+        calculatedArea = 0
 
         // 重置速度检测状态
+        speedWarning = nil
+        isOverSpeed = false
         lastLocation = nil
         lastLocationTimestamp = nil
+        consecutiveHighSpeedCount = 0
 
-        print("🛑 [路径追踪] 停止追踪，共记录 \(pathCoordinates.count) 个点")
+        // 重置路径碰撞检测状态
+        pathCollisionWarning = nil
+        cachedOthersTerritories = []
+        currentWarningLevel = .safe
+        distanceToNearestTerritory = nil
+
+        print("🛑 [路径追踪] 停止追踪，共记录 \(pointCount) 个点，所有状态已重置")
 
         // 【日志】记录停止追踪
-        TerritoryLogger.shared.log("停止追踪，共 \(pathCoordinates.count) 个点", type: .info)
+        TerritoryLogger.shared.log("停止追踪，共 \(pointCount) 个点，状态已重置", type: .info)
     }
 
     /// 清除路径
@@ -300,6 +365,9 @@ final class LocationManager: NSObject, ObservableObject {
         checkPathClosure()
     }
 
+    /// 连续高速计数器（防止单次 GPS 跳变触发误判）
+    private var consecutiveHighSpeedCount: Int = 0
+
     // MARK: - 速度检测方法
 
     /// 验证移动速度是否正常
@@ -308,10 +376,18 @@ final class LocationManager: NSObject, ObservableObject {
     private func validateMovementSpeed(newLocation: CLLocation) -> Bool {
         let now = Date()
 
+        // 【GPS 精度检查】精度太差的点直接跳过，不更新 lastLocation
+        // horizontalAccuracy > 20 米表示精度较差，可能是 GPS 跳变（收紧阈值）
+        if newLocation.horizontalAccuracy > 20 || newLocation.horizontalAccuracy < 0 {
+            print("⚠️ [速度检测] GPS 精度差: \(String(format: "%.1f", newLocation.horizontalAccuracy))m，跳过此点")
+            return false
+        }
+
         // 如果是第一个点，记录位置和时间，直接通过
         guard let prevLocation = lastLocation, let prevTimestamp = lastLocationTimestamp else {
             lastLocation = newLocation
             lastLocationTimestamp = now
+            consecutiveHighSpeedCount = 0
             return true
         }
 
@@ -321,43 +397,69 @@ final class LocationManager: NSObject, ObservableObject {
         // 计算时间差（秒）
         let timeDelta = now.timeIntervalSince(prevTimestamp)
 
-        // 防止除零错误
-        guard timeDelta > 0 else {
-            return true
+        // 防止除零错误，时间间隔太短时跳过
+        guard timeDelta > 0.5 else {
+            return false
         }
 
         // 计算速度（km/h）= 距离(m) ÷ 时间(s) × 3.6
         let speedKmh = (distance / timeDelta) * 3.6
 
+        print("🚗 [速度检测] 距离: \(String(format: "%.1f", distance))m, 时间: \(String(format: "%.1f", timeDelta))s, 速度: \(String(format: "%.1f", speedKmh)) km/h, GPS精度: \(String(format: "%.1f", newLocation.horizontalAccuracy))m")
+
+        // 【GPS 跳变检测 1】速度超过 100 km/h 几乎肯定是 GPS 跳变
+        // 人类极限跑步约 45 km/h，骑车约 60 km/h，100+ 必定是噪声
+        if speedKmh > 100 {
+            print("🔄 [速度检测] 速度异常（\(String(format: "%.0f", speedKmh)) km/h），判定为 GPS 跳变，忽略此点")
+            // 不更新 lastLocation，等待下一个正常点
+            return false
+        }
+
+        // 【GPS 跳变检测 2】短时间内移动距离过大
+        // 2秒内移动超过 40 米（相当于 72 km/h）几乎肯定是 GPS 跳变
+        if distance > 40 && timeDelta < 3 {
+            print("🔄 [速度检测] 短时间大距离跳变（\(String(format: "%.0f", distance))m / \(String(format: "%.1f", timeDelta))s），忽略此点")
+            return false
+        }
+
+        // 【GPS 跳变检测 3】长时间内移动距离过大
+        // 5秒内移动超过 80 米也可能是 GPS 跳变
+        if distance > 80 && timeDelta < 5 {
+            print("🔄 [速度检测] 检测到 GPS 跳变（\(String(format: "%.0f", distance))m / \(String(format: "%.1f", timeDelta))s），忽略此点")
+            return false
+        }
+
         // 更新上次位置和时间戳
         lastLocation = newLocation
         lastLocationTimestamp = now
 
-        print("🚗 [速度检测] 速度: \(String(format: "%.1f", speedKmh)) km/h")
+        // 速度 > 60 km/h，需要连续检测才判定为真正超速
+        // 单次高速可能是 GPS 小幅跳变，连续高速才是真正开车
+        if speedKmh > 60 {
+            consecutiveHighSpeedCount += 1
+            print("⚠️ [速度检测] 高速 \(String(format: "%.0f", speedKmh)) km/h，连续次数: \(consecutiveHighSpeedCount)")
 
-        // 速度 > 50 km/h，自动停止追踪（可能坐车或 GPS 跳变）
-        if speedKmh > 50 {
-            speedWarning = "速度过快（\(String(format: "%.0f", speedKmh)) km/h），追踪已暂停"
-            isOverSpeed = true
-            print("🚨 [速度检测] 速度 > 50 km/h，自动停止追踪！")
+            // 连续 3 次高速才判定为开车，停止追踪
+            if consecutiveHighSpeedCount >= 3 {
+                speedWarning = "速度过快（\(String(format: "%.0f", speedKmh)) km/h），追踪已暂停"
+                isOverSpeed = true
+                print("🚨 [速度检测] 连续高速 \(consecutiveHighSpeedCount) 次，判定为开车，停止追踪！")
 
-            // 【日志】记录超速停止（先记录日志再停止，否则会先记录停止日志）
-            TerritoryLogger.shared.log("超速 \(String(format: "%.0f", speedKmh)) km/h，已停止追踪", type: .error)
+                TerritoryLogger.shared.log("连续超速 \(consecutiveHighSpeedCount) 次，已停止追踪", type: .error)
 
-            stopPathTracking()
-            return false
-        }
+                stopPathTracking()
+                return false
+            }
 
-        // 速度 > 25 km/h，显示警告但继续追踪（排除正常走路的 GPS 抖动）
-        if speedKmh > 25 {
+            // 未达到连续次数，显示警告但继续
             speedWarning = "移动速度较快（\(String(format: "%.0f", speedKmh)) km/h）"
             isOverSpeed = true
-            print("⚠️ [速度检测] 速度 > 25 km/h，显示警告")
-
-            // 【日志】记录速度警告
-            TerritoryLogger.shared.log("速度较快 \(String(format: "%.0f", speedKmh)) km/h", type: .warning)
+            TerritoryLogger.shared.log("速度较快 \(String(format: "%.0f", speedKmh)) km/h (第 \(consecutiveHighSpeedCount) 次)", type: .warning)
             return true
         }
+
+        // 速度正常，重置连续高速计数器
+        consecutiveHighSpeedCount = 0
 
         // 速度正常，清除警告
         if isOverSpeed {
@@ -495,26 +597,40 @@ final class LocationManager: NSObject, ObservableObject {
         return ccw(p1, p3, p4) != ccw(p2, p3, p4) && ccw(p1, p2, p3) != ccw(p1, p2, p4)
     }
 
+    /// 计算两点之间的距离（米）
+    private func distanceBetween(_ p1: CLLocationCoordinate2D, _ p2: CLLocationCoordinate2D) -> Double {
+        let loc1 = CLLocation(latitude: p1.latitude, longitude: p1.longitude)
+        let loc2 = CLLocation(latitude: p2.latitude, longitude: p2.longitude)
+        return loc1.distance(from: loc2)
+    }
+
     /// 检测路径是否存在自相交
     /// - Returns: true 表示存在自相交
     func hasPathSelfIntersection() -> Bool {
-        // ✅ 防御性检查：至少需要4个点才可能自交
-        guard pathCoordinates.count >= 4 else { return false }
+        // ✅ 防御性检查：至少需要 15 个点才检测自交
+        // 点数太少时 GPS 噪声容易导致误判
+        guard pathCoordinates.count >= 15 else {
+            TerritoryLogger.shared.log("自交检测: 点数 \(pathCoordinates.count) < 15，跳过检测 ✓", type: .info)
+            return false
+        }
 
         // ✅ 创建路径快照的深拷贝，避免并发修改问题
         let pathSnapshot = Array(pathCoordinates)
 
         // ✅ 再次检查快照是否有效
-        guard pathSnapshot.count >= 4 else { return false }
+        guard pathSnapshot.count >= 15 else { return false }
 
         let segmentCount = pathSnapshot.count - 1
 
         // ✅ 防御性检查：确保有足够的线段
         guard segmentCount >= 2 else { return false }
 
-        // ✅ 闭环时需要跳过的首尾线段数量（防止正常圈地被误判为自交）
-        let skipHeadCount = 2
-        let skipTailCount = 2
+        // ✅ 闭环时需要跳过的首尾线段数量（增加到 4，更宽容）
+        let skipHeadCount = 4
+        let skipTailCount = 4
+
+        // ✅ GPS 跳变线段阈值（米）- 超过此距离的线段被视为 GPS 噪声，跳过检测
+        let maxValidSegmentLength: Double = 80.0
 
         for i in 0..<segmentCount {
             // ✅ 循环内索引检查
@@ -522,6 +638,12 @@ final class LocationManager: NSObject, ObservableObject {
 
             let p1 = pathSnapshot[i]
             let p2 = pathSnapshot[i + 1]
+
+            // ✅ 跳过 GPS 跳变产生的长线段
+            let segment1Length = distanceBetween(p1, p2)
+            if segment1Length > maxValidSegmentLength {
+                continue
+            }
 
             // 从 i+2 开始比较（跳过相邻线段）
             let startJ = i + 2
@@ -539,11 +661,22 @@ final class LocationManager: NSObject, ObservableObject {
                     continue
                 }
 
+                // ✅ 跳过相邻太近的线段（间隔至少 3 条线段）
+                if j - i < 4 {
+                    continue
+                }
+
                 let p3 = pathSnapshot[j]
                 let p4 = pathSnapshot[j + 1]
 
+                // ✅ 跳过 GPS 跳变产生的长线段
+                let segment2Length = distanceBetween(p3, p4)
+                if segment2Length > maxValidSegmentLength {
+                    continue
+                }
+
                 if segmentsIntersect(p1: p1, p2: p2, p3: p3, p4: p4) {
-                    TerritoryLogger.shared.log("自交检测: 线段\(i)-\(i+1) 与 线段\(j)-\(j+1) 相交", type: .error)
+                    TerritoryLogger.shared.log("自交检测: 线段\(i)-\(i+1)(\(String(format: "%.0f", segment1Length))m) 与 线段\(j)-\(j+1)(\(String(format: "%.0f", segment2Length))m) 相交", type: .error)
                     return true
                 }
             }
@@ -602,6 +735,74 @@ final class LocationManager: NSObject, ObservableObject {
         TerritoryLogger.shared.log("领地验证通过！面积: \(String(format: "%.0f", area))m²", type: .success)
         return (true, nil)
     }
+
+    // MARK: - 综合检测方法（每10秒执行）
+
+    /// 加载他人领地数据用于碰撞检测
+    private func loadOthersTerritoriesForCollisionCheck() async {
+        do {
+            cachedOthersTerritories = try await TerritoryManager.shared.loadOthersTerritories()
+            TerritoryLogger.shared.log("已加载 \(cachedOthersTerritories.count) 个他人领地用于综合检测", type: .info)
+        } catch {
+            print("⚠️ [综合检测] 加载他人领地失败: \(error)")
+            TerritoryLogger.shared.log("加载他人领地失败: \(error.localizedDescription)", type: .error)
+        }
+    }
+
+    /// 执行综合检测（轨迹穿越 + 点位置 + 距离预警）
+    private func performComprehensiveCheck() async {
+        // 如果没有在追踪或没有当前位置，跳过
+        guard isTracking, let currentLoc = currentLocation else {
+            return
+        }
+
+        // 如果还没有加载领地数据，跳过
+        guard !cachedOthersTerritories.isEmpty else {
+            return
+        }
+
+        let currentPoint = currentLoc.coordinate
+
+        do {
+            let result = try await TerritoryManager.shared.comprehensiveCheck(
+                currentPoint: currentPoint,
+                previousPoints: pathCoordinates,
+                territories: cachedOthersTerritories
+            )
+
+            // 更新预警级别和距离
+            currentWarningLevel = result.level
+            distanceToNearestTerritory = result.distance
+
+            // 根据结果采取行动
+            switch result.level {
+            case .violation:
+                // 违规！立即停止追踪
+                pathCollisionWarning = result.message
+                TerritoryLogger.shared.log("违规！\(result.message)", type: .error)
+                stopPathTracking()
+
+            case .danger:
+                // 危险区域，显示警告但继续追踪
+                pathCollisionWarning = result.message
+                TerritoryLogger.shared.log("危险区域：\(result.message)", type: .warning)
+
+            case .caution:
+                // 警告区域，显示提示
+                pathCollisionWarning = result.message
+                TerritoryLogger.shared.log("接近边界：\(result.message)", type: .warning)
+
+            case .safe:
+                // 安全，清除警告
+                if pathCollisionWarning != nil {
+                    pathCollisionWarning = nil
+                }
+            }
+
+        } catch {
+            print("⚠️ [综合检测] 检测失败: \(error)")
+        }
+    }
 }
 
 // MARK: - CLLocationManagerDelegate
@@ -649,6 +850,9 @@ extension LocationManager: CLLocationManagerDelegate {
 
             // 【关键】更新 currentLocation（供 Timer 采点使用）
             currentLocation = location
+
+            // 传递位置更新给探索管理器
+            ExplorationManager.shared.handleLocationUpdate(location)
         }
     }
 

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct MainTabView: View {
     /// 当前选中的 Tab（默认为个人页面）
-    @State private var selectedTab = 2
+    @State private var selectedTab = 3
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -27,19 +27,26 @@ struct MainTabView: View {
                 }
                 .tag(1)
 
+            ResourcesTabView()
+                .tabItem {
+                    Image(systemName: "cube.fill")
+                    Text("资源")
+                }
+                .tag(2)
+
             ProfileTabView()
                 .tabItem {
                     Image(systemName: "person.fill")
                     Text("个人")
                 }
-                .tag(2)
+                .tag(3)
 
             MoreTabView()
                 .tabItem {
                     Image(systemName: "ellipsis")
                     Text("更多")
                 }
-                .tag(3)
+                .tag(4)
         }
         .tint(ApocalypseTheme.primary)
     }
