@@ -167,31 +167,27 @@ class POISearchManager {
         return .supermarket
     }
 
-    /// 生成危险等级
+    /// 生成危险等级（支持 5 级：安全/低危/中危/高危/极危）
     private func generateDangerLevel(type: POIType) -> DangerLevel {
         var baseDanger: Int
         switch type {
         case .hospital:
-            baseDanger = 2
+            baseDanger = 2    // 医院中危起步
         case .factory:
-            baseDanger = 3
+            baseDanger = 3    // 工厂高危起步
         case .gasStation:
-            baseDanger = 1
+            baseDanger = 1    // 加油站低危起步
         case .pharmacy:
-            baseDanger = 1
+            baseDanger = 1    // 药店低危起步
         case .supermarket:
-            baseDanger = 0
+            baseDanger = 0    // 超市安全起步
         }
 
-        let randomFactor = Int.random(in: 0...1)
-        let totalDanger = min(baseDanger + randomFactor, 3)
+        // 随机增加 0-2 级危险
+        let randomFactor = Int.random(in: 0...2)
+        let totalDanger = min(baseDanger + randomFactor, 4)  // 最高 4（极危）
 
-        switch totalDanger {
-        case 0: return .safe
-        case 1: return .low
-        case 2: return .medium
-        default: return .high
-        }
+        return DangerLevel(rawValue: totalDanger) ?? .safe
     }
 
     /// 去除重复 POI（距离小于 50 米视为同一地点）

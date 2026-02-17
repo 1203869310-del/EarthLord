@@ -66,13 +66,15 @@ class InventoryManager: ObservableObject {
     ///   - category: 物品分类
     ///   - quantity: 数量
     ///   - rarity: 稀有度
+    ///   - story: 背景故事（AI 生成时有值）
     func addItem(
         name: String,
         category: ItemCategory,
         quantity: Int,
-        rarity: Rarity
+        rarity: Rarity,
+        story: String? = nil
     ) {
-        // 检查是否已有相同物品
+        // 检查是否已有相同物品（AI 生成的物品名称唯一，不会重复）
         if let index = items.firstIndex(where: { $0.name == name }) {
             // 增加数量
             items[index].quantity += quantity
@@ -91,10 +93,16 @@ class InventoryManager: ObservableObject {
                 weight: weight,
                 volume: volume,
                 rarity: rarity,
-                quality: nil
+                quality: nil,
+                story: story
             )
             items.append(newItem)
-            print("📦 [背包] 添加新物品: \(name) x\(quantity)")
+
+            if story != nil {
+                print("📦 [背包] 添加AI物品: \(name) x\(quantity)")
+            } else {
+                print("📦 [背包] 添加新物品: \(name) x\(quantity)")
+            }
         }
 
         TerritoryLogger.shared.log("获得物品: \(name) x\(quantity)", type: .success)

@@ -155,7 +155,7 @@ struct POIDetailView: View {
             infoRow(
                 icon: "exclamationmark.triangle.fill",
                 label: "危险等级",
-                value: poi.dangerLevel.rawValue,
+                value: poi.dangerLevel.displayName,
                 color: dangerColor
             )
 

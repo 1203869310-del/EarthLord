@@ -2,7 +2,7 @@
 //  RewardGenerator.swift
 //  EarthLord
 //
-//  奖励生成器 - 根据等级生成随机奖励
+//  奖励生成器 - 根据等级生成随机奖励（支持 AI 生成 + 本地降级）
 //
 
 import Foundation
@@ -11,9 +11,104 @@ import Foundation
 
 struct RewardGenerator {
 
-    // MARK: - Public Methods
+    // MARK: - AI 生成入口（带降级）
 
-    /// 根据 POI 类型生成奖励物品
+    /// AI 生成 POI 奖励（带本地降级）
+    /// - Parameters:
+    ///   - poi: 兴趣点
+    ///   - itemCount: 物品数量
+    /// - Returns: 奖励物品列表
+    @MainActor
+    static func generatePOIRewardsWithAI(poi: POI, itemCount: Int = 3) async -> [RewardItem] {
+        do {
+            // 尝试 AI 生成
+            let aiItems = try await AIItemService.shared.generateItems(for: poi, itemCount: itemCount)
+            print("✅ [奖励] AI 生成成功: \(aiItems.count) 个物品")
+            return aiItems
+        } catch {
+            // AI 生成失败，使用本地降级
+            print("⚠️ [奖励] AI 生成失败，使用本地降级: \(error.localizedDescription)")
+            TerritoryLogger.shared.log("AI降级: \(error.localizedDescription)", type: .warning)
+            return generateLocalRewards(poi: poi, itemCount: itemCount)
+        }
+    }
+
+    /// 本地降级方案
+    /// - Parameters:
+    ///   - poi: 兴趣点
+    ///   - itemCount: 物品数量
+    /// - Returns: 本地生成的奖励物品列表
+    @MainActor
+    static func generateLocalRewards(poi: POI, itemCount: Int) -> [RewardItem] {
+        var rewards: [RewardItem] = []
+
+        let itemDefinitions = InventoryManager.shared.itemDefinitions
+        guard !itemDefinitions.isEmpty else {
+            print("⚠️ [本地奖励] 物品定义为空")
+            return rewards
+        }
+
+        // 获取 POI 配置
+        let (_, preferredCategories, _) = poiRewardConfig(for: poi.type)
+
+        // 获取危险等级的稀有度权重
+        let weights = poi.dangerLevel.rarityWeights
+
+        // 优先从偏好类别中选择物品
+        let preferredItems = itemDefinitions.filter { preferredCategories.contains($0.category) }
+        let otherItems = itemDefinitions.filter { !preferredCategories.contains($0.category) }
+
+        for i in 0..<itemCount {
+            let usePreferred = i < itemCount / 2 + 1 && !preferredItems.isEmpty
+            let poolToUse = usePreferred ? preferredItems : (preferredItems + otherItems)
+
+            // 根据危险等级的概率决定稀有度
+            let rarity = randomRarityFromWeights(weights)
+
+            // 从对应稀有度的物品池中随机选择
+            let itemsOfRarity = poolToUse.filter { $0.rarity == rarity }
+            let fallbackItems = poolToUse.filter { $0.rarity == .common }
+
+            if let randomItem = itemsOfRarity.randomElement() ?? fallbackItems.randomElement() {
+                let quantity = Int.random(in: 1...3)
+                let reward = RewardItem(
+                    name: randomItem.name,
+                    quantity: quantity,
+                    iconName: randomItem.category.iconName,
+                    category: randomItem.category,
+                    rarity: randomItem.rarity
+                )
+                rewards.append(reward)
+            }
+        }
+
+        return rewards
+    }
+
+    /// 根据危险等级权重随机选择稀有度
+    private static func randomRarityFromWeights(_ weights: RarityWeights) -> Rarity {
+        let totalWeight = weights.common + weights.uncommon + weights.rare + weights.epic + weights.legendary
+        let randomValue = Double.random(in: 0..<totalWeight)
+
+        var cumulative = 0.0
+        cumulative += weights.common
+        if randomValue < cumulative { return .common }
+
+        cumulative += weights.uncommon
+        if randomValue < cumulative { return .uncommon }
+
+        cumulative += weights.rare
+        if randomValue < cumulative { return .rare }
+
+        cumulative += weights.epic
+        if randomValue < cumulative { return .epic }
+
+        return .legendary
+    }
+
+    // MARK: - 原有 Public Methods
+
+    /// 根据 POI 类型生成奖励物品（本地生成，保持兼容）
     /// - Parameter poiType: POI 类型
     /// - Returns: 奖励物品列表
     @MainActor

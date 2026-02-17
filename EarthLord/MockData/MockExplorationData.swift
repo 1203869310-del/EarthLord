@@ -66,11 +66,22 @@ enum ResourceStatus {
 }
 
 /// 危险等级
-enum DangerLevel: String {
-    case safe = "安全"
-    case low = "低危"
-    case medium = "中危"
-    case high = "高危"
+enum DangerLevel: Int, CaseIterable {
+    case safe = 0       // 安全
+    case low = 1        // 低危
+    case medium = 2     // 中危
+    case high = 3       // 高危
+    case extreme = 4    // 极危
+
+    var displayName: String {
+        switch self {
+        case .safe: return "安全"
+        case .low: return "低危"
+        case .medium: return "中危"
+        case .high: return "高危"
+        case .extreme: return "极危"
+        }
+    }
 
     var color: String {
         switch self {
@@ -78,7 +89,42 @@ enum DangerLevel: String {
         case .low: return "yellow"
         case .medium: return "orange"
         case .high: return "red"
+        case .extreme: return "purple"
         }
+    }
+
+    /// 稀有度权重分布
+    var rarityWeights: RarityWeights {
+        switch self {
+        case .safe, .low:
+            return RarityWeights(common: 0.70, uncommon: 0.25, rare: 0.05, epic: 0, legendary: 0)
+        case .medium:
+            return RarityWeights(common: 0.50, uncommon: 0.30, rare: 0.15, epic: 0.05, legendary: 0)
+        case .high:
+            return RarityWeights(common: 0, uncommon: 0.40, rare: 0.35, epic: 0.20, legendary: 0.05)
+        case .extreme:
+            return RarityWeights(common: 0, uncommon: 0, rare: 0.30, epic: 0.40, legendary: 0.30)
+        }
+    }
+}
+
+/// 稀有度权重结构
+struct RarityWeights {
+    let common: Double
+    let uncommon: Double
+    let rare: Double
+    let epic: Double
+    let legendary: Double
+
+    /// 转换为字典（用于 AI 请求）
+    var toDictionary: [String: Double] {
+        [
+            "common": common,
+            "uncommon": uncommon,
+            "rare": rare,
+            "epic": epic,
+            "legendary": legendary
+        ]
     }
 }
 
@@ -190,18 +236,32 @@ enum ItemCategory: String, CaseIterable {
 }
 
 /// 稀有度
-enum Rarity: String {
+enum Rarity: String, CaseIterable, Codable {
     case common = "普通"
-    case excellent = "优秀"
+    case uncommon = "优秀"
     case rare = "稀有"
     case epic = "史诗"
+    case legendary = "传奇"
 
     var color: String {
         switch self {
         case .common: return "gray"
-        case .excellent: return "green"
+        case .uncommon: return "green"
         case .rare: return "blue"
         case .epic: return "purple"
+        case .legendary: return "orange"
+        }
+    }
+
+    /// 从 API 返回的字符串初始化
+    static func from(apiString: String) -> Rarity {
+        switch apiString.lowercased() {
+        case "common": return .common
+        case "uncommon": return .uncommon
+        case "rare": return .rare
+        case "epic": return .epic
+        case "legendary": return .legendary
+        default: return .common
         }
     }
 }
@@ -224,6 +284,36 @@ struct BackpackItem: Identifiable {
     let volume: Double       // 单个物品体积（L）
     let rarity: Rarity
     let quality: Quality?    // 部分物品没有品质
+    let story: String?       // 背景故事（AI 生成时有值）
+
+    /// 标准初始化器
+    init(name: String, category: ItemCategory, quantity: Int, weight: Double, volume: Double, rarity: Rarity, quality: Quality?) {
+        self.name = name
+        self.category = category
+        self.quantity = quantity
+        self.weight = weight
+        self.volume = volume
+        self.rarity = rarity
+        self.quality = quality
+        self.story = nil
+    }
+
+    /// 带故事的初始化器
+    init(name: String, category: ItemCategory, quantity: Int, weight: Double, volume: Double, rarity: Rarity, quality: Quality?, story: String?) {
+        self.name = name
+        self.category = category
+        self.quantity = quantity
+        self.weight = weight
+        self.volume = volume
+        self.rarity = rarity
+        self.quality = quality
+        self.story = story
+    }
+
+    /// 是否有背景故事
+    var hasStory: Bool {
+        story != nil && !(story?.isEmpty ?? true)
+    }
 }
 
 // MARK: - 奖励等级
@@ -328,7 +418,31 @@ struct RewardItem: Identifiable {
     let quantity: Int
     let iconName: String
     let category: ItemCategory
-    let rarity: Rarity    // 物品稀有度
+    let rarity: Rarity           // 物品稀有度
+    let story: String?           // 背景故事（AI 生成时有值）
+    let isAIGenerated: Bool      // 是否 AI 生成
+
+    /// 标准初始化器（本地生成）
+    init(name: String, quantity: Int, iconName: String, category: ItemCategory, rarity: Rarity) {
+        self.name = name
+        self.quantity = quantity
+        self.iconName = iconName
+        self.category = category
+        self.rarity = rarity
+        self.story = nil
+        self.isAIGenerated = false
+    }
+
+    /// AI 生成初始化器
+    init(name: String, quantity: Int, iconName: String, category: ItemCategory, rarity: Rarity, story: String?, isAIGenerated: Bool) {
+        self.name = name
+        self.quantity = quantity
+        self.iconName = iconName
+        self.category = category
+        self.rarity = rarity
+        self.story = story
+        self.isAIGenerated = isAIGenerated
+    }
 }
 
 /// 搜刮结果
@@ -569,7 +683,7 @@ struct MockExplorationData {
             quantity: 10,
             weight: 1.5,
             volume: 1.0,
-            rarity: .excellent,
+            rarity: .uncommon,
             quality: nil
         ),
         BackpackItem(
@@ -578,7 +692,7 @@ struct MockExplorationData {
             quantity: 1,
             weight: 0.4,
             volume: 0.3,
-            rarity: .excellent,
+            rarity: .uncommon,
             quality: .perfect
         ),
         BackpackItem(

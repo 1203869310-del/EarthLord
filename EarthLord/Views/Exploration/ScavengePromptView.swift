@@ -190,9 +190,32 @@ struct ScavengeResultView: View {
     /// 内容出现动画
     @State private var showContent = false
 
+    /// 选中查看故事的物品
+    @State private var selectedReward: RewardItem?
+
+    /// 是否显示故事弹窗
+    @State private var showStoryView = false
+
     // MARK: - Body
 
     var body: some View {
+        ZStack {
+            mainContent
+
+            // 物品故事弹窗
+            if showStoryView, let reward = selectedReward {
+                ItemStoryView(reward: reward) {
+                    showStoryView = false
+                    selectedReward = nil
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Main Content
+
+    private var mainContent: some View {
         VStack(spacing: 0) {
             // 顶部装饰
             ZStack {
@@ -257,11 +280,17 @@ struct ScavengeResultView: View {
                 VStack(spacing: 12) {
                     ForEach(Array(result.rewards.enumerated()), id: \.element.id) { index, reward in
                         if visibleRewardIndices.contains(index) {
-                            RewardItemRow(reward: reward)
-                                .transition(.asymmetric(
-                                    insertion: .scale.combined(with: .opacity),
-                                    removal: .opacity
-                                ))
+                            RewardItemRow(reward: reward) {
+                                // 点击查看故事
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    selectedReward = reward
+                                    showStoryView = true
+                                }
+                            }
+                            .transition(.asymmetric(
+                                insertion: .scale.combined(with: .opacity),
+                                removal: .opacity
+                            ))
                         }
                     }
                 }
@@ -326,42 +355,82 @@ struct RewardItemRow: View {
 
     let reward: RewardItem
 
+    /// 点击查看故事回调
+    var onTapStory: (() -> Void)?
+
     var body: some View {
-        HStack(spacing: 12) {
-            // 图标
-            ZStack {
-                Circle()
-                    .fill(rarityColor.opacity(0.2))
-                    .frame(width: 44, height: 44)
-
-                Image(systemName: reward.iconName)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(rarityColor)
+        Button(action: {
+            if reward.story != nil {
+                onTapStory?()
             }
+        }) {
+            HStack(spacing: 12) {
+                // 图标
+                ZStack {
+                    Circle()
+                        .fill(rarityColor.opacity(0.2))
+                        .frame(width: 44, height: 44)
 
-            // 名称和稀有度
-            VStack(alignment: .leading, spacing: 4) {
-                Text(reward.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    Image(systemName: reward.iconName)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(rarityColor)
+
+                    // AI 生成标识
+                    if reward.isAIGenerated {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.yellow)
+                            .offset(x: 14, y: -14)
+                    }
+                }
+
+                // 名称和稀有度
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reward.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(ApocalypseTheme.textPrimary)
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        Text(reward.rarity.rawValue)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(rarityColor)
+
+                        // 有故事提示
+                        if reward.story != nil {
+                            HStack(spacing: 2) {
+                                Image(systemName: "book.fill")
+                                    .font(.system(size: 9))
+                                Text("故事")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            .foregroundColor(ApocalypseTheme.primary.opacity(0.8))
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // 数量
+                Text("x\(reward.quantity)")
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(ApocalypseTheme.textPrimary)
 
-                Text(reward.rarity.rawValue)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(rarityColor)
+                // 箭头（有故事时显示）
+                if reward.story != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(ApocalypseTheme.textSecondary)
+                }
             }
-
-            Spacer()
-
-            // 数量
-            Text("x\(reward.quantity)")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(ApocalypseTheme.textPrimary)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(0.05))
+            )
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.05))
-        )
+        .buttonStyle(PlainButtonStyle())
+        .disabled(reward.story == nil)
     }
 
     /// 稀有度颜色
@@ -371,12 +440,84 @@ struct RewardItemRow: View {
         case "green": return .green
         case "blue": return .blue
         case "purple": return .purple
+        case "orange": return .orange
         default: return .gray
         }
     }
 }
 
+// MARK: - 搜刮加载视图
+
+/// 搜刮加载视图
+/// 显示 AI 生成物品时的加载动画
+struct ScavengingLoadingView: View {
+
+    // MARK: - State
+
+    @State private var rotation: Double = 0
+    @State private var scale: CGFloat = 1.0
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // 加载动画
+            ZStack {
+                // 外圈
+                Circle()
+                    .stroke(ApocalypseTheme.primary.opacity(0.2), lineWidth: 4)
+                    .frame(width: 80, height: 80)
+
+                // 旋转圈
+                Circle()
+                    .trim(from: 0, to: 0.3)
+                    .stroke(ApocalypseTheme.primary, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .frame(width: 80, height: 80)
+                    .rotationEffect(.degrees(rotation))
+
+                // 中心图标
+                Image(systemName: "sparkles")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(ApocalypseTheme.primary)
+                    .scaleEffect(scale)
+            }
+
+            // 提示文字
+            VStack(spacing: 8) {
+                Text("正在搜刮...")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(ApocalypseTheme.textPrimary)
+
+                Text("AI 正在生成独特物品")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(ApocalypseTheme.textSecondary)
+            }
+        }
+        .padding(40)
+        .background(ApocalypseTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .shadow(color: .black.opacity(0.3), radius: 20)
+        .onAppear {
+            // 旋转动画
+            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            // 缩放动画
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                scale = 1.2
+            }
+        }
+    }
+}
+
 // MARK: - Preview
+
+#Preview("搜刮加载") {
+    ZStack {
+        Color.black.opacity(0.5).ignoresSafeArea()
+        ScavengingLoadingView()
+    }
+}
 
 #Preview("搜刮提示") {
     ZStack {
@@ -402,9 +543,25 @@ struct RewardItemRow: View {
             result: ScavengeResult(
                 poi: MockExplorationData.pois[0],
                 rewards: [
+                    RewardItem(
+                        name: "老张的急救包",
+                        quantity: 1,
+                        iconName: "cross.fill",
+                        category: .medical,
+                        rarity: .rare,
+                        story: "在超市的员工休息室里，你发现了一个贴有'老张'标签的急救包。里面的绷带和消毒液保存完好，这或许是某位值班员工最后的遗物...",
+                        isAIGenerated: true
+                    ),
                     RewardItem(name: "矿泉水", quantity: 3, iconName: "drop.fill", category: .water, rarity: .common),
-                    RewardItem(name: "绷带", quantity: 2, iconName: "cross.fill", category: .medical, rarity: .common),
-                    RewardItem(name: "罐头食品", quantity: 1, iconName: "fork.knife", category: .food, rarity: .rare)
+                    RewardItem(
+                        name: "末日罐头",
+                        quantity: 1,
+                        iconName: "fork.knife",
+                        category: .food,
+                        rarity: .epic,
+                        story: "一个印有'政府储备'字样的军用罐头，生产日期是灾难发生前三个月。密封完好，保质期还有很长...",
+                        isAIGenerated: true
+                    )
                 ],
                 timestamp: Date()
             ),

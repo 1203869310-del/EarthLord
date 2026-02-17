@@ -324,6 +324,7 @@ class ExplorationManager: ObservableObject {
         print("🧹 [围栏] 已清除所有地理围栏")
     }
 
+
     /// 处理进入地理围栏事件
     private func handleRegionEntered(regionId: String) {
         guard state == .active else { return }
@@ -607,9 +608,12 @@ class ExplorationManager: ObservableObject {
         clearAllGeofences()
     }
 
+    /// 是否正在搜刮（加载中）
+    @Published var isScavenging: Bool = false
+
     // MARK: - POI 搜刮方法
 
-    /// 执行搜刮
+    /// 执行搜刮（异步，支持 AI 生成）
     func scavengePOI() {
         guard let poi = currentPOI else {
             print("⚠️ [搜刮] 没有当前 POI")
@@ -622,37 +626,45 @@ class ExplorationManager: ObservableObject {
         // 标记为已搜刮
         scavengedPOIIds.insert(poi.id)
 
-        // 生成奖励（根据 POI 类型生成对应奖励）
-        let rewards = RewardGenerator.generatePOIRewards(poiType: poi.type)
+        // 设置加载状态
+        isScavenging = true
 
-        // 创建搜刮结果
-        let result = ScavengeResult(
-            poi: poi,
-            rewards: rewards,
-            timestamp: Date()
-        )
+        // 异步执行 AI 生成
+        Task {
+            // AI 生成（带降级）
+            let rewards = await RewardGenerator.generatePOIRewardsWithAI(poi: poi, itemCount: 3)
 
-        // 显示搜刮结果
-        scavengeResult = result
-        showScavengeResult = true
-
-        // 将奖励添加到背包
-        for reward in rewards {
-            InventoryManager.shared.addItem(
-                name: reward.name,
-                category: reward.category,
-                quantity: reward.quantity,
-                rarity: reward.rarity
+            // 创建搜刮结果
+            let result = ScavengeResult(
+                poi: poi,
+                rewards: rewards,
+                timestamp: Date()
             )
-        }
 
-        print("🎁 [搜刮] 搜刮成功: \(poi.name), 获得 \(rewards.count) 件物品")
-        TerritoryLogger.shared.log("搜刮 \(poi.name): 获得 \(rewards.count) 件物品", type: .success)
+            // 显示搜刮结果
+            scavengeResult = result
+            showScavengeResult = true
+            isScavenging = false
 
-        // 更新 POI 状态
-        if let index = pois.firstIndex(where: { $0.id == poi.id }) {
-            pois[index].status = .looted
-            pois[index].lastScavengedAt = Date()
+            // 将奖励添加到背包
+            for reward in rewards {
+                InventoryManager.shared.addItem(
+                    name: reward.name,
+                    category: reward.category,
+                    quantity: reward.quantity,
+                    rarity: reward.rarity,
+                    story: reward.story
+                )
+            }
+
+            print("🎁 [搜刮] 搜刮成功: \(poi.name), 获得 \(rewards.count) 件物品")
+            TerritoryLogger.shared.log("搜刮 \(poi.name): 获得 \(rewards.count) 件物品", type: .success)
+
+            // 更新 POI 状态
+            if let index = pois.firstIndex(where: { $0.id == poi.id }) {
+                pois[index].status = .looted
+                pois[index].lastScavengedAt = Date()
+            }
         }
     }
 

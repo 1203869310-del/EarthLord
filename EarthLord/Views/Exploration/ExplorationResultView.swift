@@ -408,7 +408,8 @@ struct ExplorationResultView: View {
     private func rarityColor(for rarity: Rarity) -> Color {
         switch rarity {
         case .common: return .gray
-        case .excellent: return .green
+        case .uncommon: return .green
+        case .legendary: return .orange
         case .rare: return .blue
         case .epic: return .purple
         }
