@@ -432,6 +432,7 @@ class ExplorationManager: ObservableObject {
 
     /// 处理位置更新
     func handleLocationUpdate(_ location: CLLocation) {
+        print("🛰️ [位置] 收到更新，探索状态: \(state), POI数量: \(pois.count)")
         guard state == .active else {
             return
         }
@@ -685,12 +686,19 @@ class ExplorationManager: ObservableObject {
     private func checkNearbyPOIs(userLocation: CLLocation) {
         guard state == .active, !showPOIPopup, !isScavenging else { return }
 
+        if pois.isEmpty {
+            print("⚠️ [POI检测] POI列表为空，跳过检测")
+            return
+        }
+
         for poi in pois {
             // 跳过已搜刮的
             guard !scavengedPOIIds.contains(poi.id) else { continue }
 
             let poiLocation = CLLocation(latitude: poi.coordinate.latitude, longitude: poi.coordinate.longitude)
             let distance = userLocation.distance(from: poiLocation)
+
+            print("📏 [POI检测] \(poi.name): \(String(format: "%.0f", distance))m (触发距离: \(Int(poiTriggerDistance))m)")
 
             if distance <= poiTriggerDistance {
                 print("🎯 [POI] 进入范围: \(poi.name), 距离: \(String(format: "%.0f", distance))m")
