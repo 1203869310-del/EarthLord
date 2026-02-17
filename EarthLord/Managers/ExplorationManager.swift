@@ -95,6 +95,9 @@ class ExplorationManager: ObservableObject {
     /// 计时器
     private var timer: Timer?
 
+    /// POI 定时检测计时器（每5秒检测一次，解决站着不动的情况）
+    private var poiCheckTimer: Timer?
+
     /// 位置管理器（引用外部）
     private weak var locationManager: LocationManager?
 
@@ -128,7 +131,7 @@ class ExplorationManager: ObservableObject {
     private let maxSpeed: Double = 30.0
 
     /// GPS 精度阈值（米）
-    private let minAccuracy: Double = 50.0
+    private let minAccuracy: Double = 100.0
 
     /// 最小移动距离（米）
     private let minMovementDistance: Double = 5.0
@@ -208,6 +211,14 @@ class ExplorationManager: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateDuration()
+            }
+        }
+
+        // 启动 POI 定时检测（每5秒，解决站着不动时无位置更新的问题）
+        poiCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, let location = self.lastLocation else { return }
+                self.checkNearbyPOIs(userLocation: location)
             }
         }
 
@@ -364,6 +375,8 @@ class ExplorationManager: ObservableObject {
         timer = nil
         overspeedTimer?.invalidate()
         overspeedTimer = nil
+        poiCheckTimer?.invalidate()
+        poiCheckTimer = nil
 
         // 停止位置上报
         playerLocationManager.stopPeriodicReporting()
@@ -598,6 +611,10 @@ class ExplorationManager: ObservableObject {
 
         // 停止位置上报
         playerLocationManager.stopPeriodicReporting()
+
+        // 停止 POI 定时检测
+        poiCheckTimer?.invalidate()
+        poiCheckTimer = nil
 
         // 清除 POI 状态
         pois = []

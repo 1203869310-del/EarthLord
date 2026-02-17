@@ -151,7 +151,7 @@ final class LocationManager: NSObject, ObservableObject {
         // 配置定位管理器
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest  // 最高精度
-        locationManager.distanceFilter = 10  // 移动10米才更新位置
+        locationManager.distanceFilter = 5  // 移动5米才更新位置
     }
 
     // MARK: - Public Methods
