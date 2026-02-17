@@ -276,10 +276,7 @@ class ExplorationManager: ObservableObject {
             // 更新 POI 列表
             pois = foundPOIs
 
-            // 为每个 POI 设置地理围栏
-            setupGeofences(for: foundPOIs)
-
-            print("✅ [POI] 成功加载 \(foundPOIs.count) 个 POI，已设置地理围栏")
+            print("✅ [POI] 成功加载 \(foundPOIs.count) 个 POI")
             TerritoryLogger.shared.log("加载 \(foundPOIs.count) 个 POI (密度: \(densityLevel.rawValue))", type: .success)
 
         } catch {
@@ -562,6 +559,9 @@ class ExplorationManager: ObservableObject {
         lastLocation = location
         lastLocationTime = now
 
+        // 检测附近 POI
+        checkNearbyPOIs(userLocation: location)
+
         // 总结日志
         print("📊 [探索] 当前状态 - 距离: \(String(format: "%.0f", totalDistance))m, 等级: \(currentTier.rawValue), 速度: \(String(format: "%.1f", speed))km/h")
     }
@@ -679,6 +679,27 @@ class ExplorationManager: ObservableObject {
         showScavengeResult = false
         scavengeResult = nil
         currentPOI = nil
+    }
+
+    /// 检测用户是否进入 POI 范围（替代地理围栏）
+    private func checkNearbyPOIs(userLocation: CLLocation) {
+        guard state == .active, !showPOIPopup, !isScavenging else { return }
+
+        for poi in pois {
+            // 跳过已搜刮的
+            guard !scavengedPOIIds.contains(poi.id) else { continue }
+
+            let poiLocation = CLLocation(latitude: poi.coordinate.latitude, longitude: poi.coordinate.longitude)
+            let distance = userLocation.distance(from: poiLocation)
+
+            if distance <= poiTriggerDistance {
+                print("🎯 [POI] 进入范围: \(poi.name), 距离: \(String(format: "%.0f", distance))m")
+                TerritoryLogger.shared.log("发现地点: \(poi.name)", type: .info)
+                currentPOI = poi
+                showPOIPopup = true
+                return
+            }
+        }
     }
 
     /// 计算当前位置到 POI 的距离
