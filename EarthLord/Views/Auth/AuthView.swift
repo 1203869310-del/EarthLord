@@ -126,7 +126,7 @@ struct AuthView: View {
             }
 
             // 标题
-            Text("地球新主")
+            Text("地球心主")
                 .font(.system(size: 32, weight: .bold))
                 .foregroundColor(.white)
 
