@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import Supabase
+import CoreLocation
 
 // MARK: - 通讯管理器
 
@@ -335,7 +336,8 @@ final class CommunicationManager: ObservableObject {
 
     /// 通过 RPC 发送消息
     @discardableResult
-    func sendChannelMessage(channelId: UUID, content: String, deviceType: String? = nil) async -> Bool {
+    func sendChannelMessage(channelId: UUID, content: String, deviceType: String? = nil,
+                            latitude: Double? = nil, longitude: Double? = nil) async -> Bool {
         isSendingMessage = true
         defer { isSendingMessage = false }
         do {
@@ -346,6 +348,8 @@ final class CommunicationManager: ObservableObject {
             if let dt = deviceType {
                 params["p_device_type"] = .string(dt)
             }
+            if let lat = latitude  { params["p_latitude"]  = .double(lat) }
+            if let lon = longitude { params["p_longitude"] = .double(lon) }
             try await supabase
                 .rpc("send_channel_message", params: params)
                 .execute()
@@ -390,9 +394,17 @@ final class CommunicationManager: ObservableObject {
             let dec = JSONDecoder()
             let message = try insertion.decodeRecord(as: ChannelMessage.self, decoder: dec)
             guard subscribedChannelIds.contains(message.channelId) else { return }
+
+            // ✅ Day 35 新增：距离过滤
+            let channelType = subscribedChannels
+                .first(where: { $0.channel.id == message.channelId })?.channel.channelType
+            if let ct = channelType, !shouldReceiveMessage(message, channelType: ct) { return }
+
             var msgs = channelMessages[message.channelId] ?? []
-            msgs.append(message)
-            channelMessages[message.channelId] = msgs
+            if !msgs.contains(where: { $0.id == message.id }) {
+                msgs.append(message)
+                channelMessages[message.channelId] = msgs
+            }
             print("[CommunicationManager] ✅ 收到新消息: \(message.content)")
         } catch {
             print("[CommunicationManager] ❌ 解析新消息失败: \(error)")
@@ -419,5 +431,73 @@ final class CommunicationManager: ObservableObject {
     /// 获取指定频道的消息列表
     func getMessages(for channelId: UUID) -> [ChannelMessage] {
         channelMessages[channelId] ?? []
+    }
+
+    // MARK: - 距离过滤
+
+    /// 判断是否应接收该消息（保守策略：信息不完整时显示）
+    func shouldReceiveMessage(_ message: ChannelMessage, channelType: ChannelType) -> Bool {
+        // 营地频道（私有）不限制距离
+        if channelType == .camp {
+            return true
+        }
+
+        guard let myDevice = currentDevice?.deviceType else {
+            print("⚠️ [距离过滤] 无法获取当前设备，保守显示"); return true
+        }
+        // 收音机接收方：无限制
+        if myDevice == .radio { print("📻 [距离过滤] 收音机用户，接收所有消息"); return true }
+
+        guard let senderDevice = message.senderDeviceType else {
+            print("⚠️ [距离过滤] 消息缺少设备类型，保守显示"); return true
+        }
+        if senderDevice == .radio { print("🚫 [距离过滤] 收音机不能发送消息"); return false }
+
+        guard let senderLocation = message.senderLocation else {
+            print("⚠️ [距离过滤] 消息缺少位置信息，保守显示"); return true
+        }
+        guard let myLocation = getCurrentLocation() else {
+            print("⚠️ [距离过滤] 无法获取当前位置，保守显示"); return true
+        }
+
+        let distance = calculateDistance(
+            from: CLLocationCoordinate2D(latitude: myLocation.latitude, longitude: myLocation.longitude),
+            to:   CLLocationCoordinate2D(latitude: senderLocation.latitude, longitude: senderLocation.longitude)
+        )
+        let canReceive = canReceiveMessage(senderDevice: senderDevice, myDevice: myDevice, distance: distance)
+        print(canReceive
+            ? "✅ [距离过滤] 通过: 发送者=\(senderDevice.rawValue), 我=\(myDevice.rawValue), 距离=\(String(format: "%.2f", distance))km"
+            : "🚫 [距离过滤] 丢弃: 发送者=\(senderDevice.rawValue), 我=\(myDevice.rawValue), 距离=\(String(format: "%.2f", distance))km")
+        return canReceive
+    }
+
+    /// 设备矩阵：(发送者, 接收者) → 最大距离(km)
+    private func canReceiveMessage(senderDevice: DeviceType, myDevice: DeviceType, distance: Double) -> Bool {
+        if myDevice == .radio  { return true  }
+        if senderDevice == .radio { return false }
+        switch (senderDevice, myDevice) {
+        case (.walkieTalkie, .walkieTalkie): return distance <= 3.0
+        case (.walkieTalkie, .campRadio):   return distance <= 30.0
+        case (.walkieTalkie, .satellite):   return distance <= 100.0
+        case (.campRadio,   .walkieTalkie): return distance <= 30.0
+        case (.campRadio,   .campRadio):    return distance <= 30.0
+        case (.campRadio,   .satellite):    return distance <= 100.0
+        case (.satellite,   .walkieTalkie): return distance <= 100.0
+        case (.satellite,   .campRadio):    return distance <= 100.0
+        case (.satellite,   .satellite):    return distance <= 100.0
+        default: return false
+        }
+    }
+
+    /// Haversine 距离计算（公里）
+    private func calculateDistance(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
+        CLLocation(latitude: from.latitude, longitude: from.longitude)
+            .distance(from: CLLocation(latitude: to.latitude, longitude: to.longitude)) / 1000.0
+    }
+
+    /// 当前用户位置（真实 GPS）
+    private func getCurrentLocation() -> LocationPoint? {
+        guard let coord = LocationManager.shared.userLocation else { return nil }
+        return LocationPoint(latitude: coord.latitude, longitude: coord.longitude)
     }
 }

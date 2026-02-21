@@ -26,7 +26,7 @@ struct EarthLordApp: App {
     @StateObject private var communicationManager = CommunicationManager.shared
 
     /// 定位管理器 - 全局状态（用于圈地测试页面监听追踪状态）
-    @StateObject private var locationManager = LocationManager()
+    @StateObject private var locationManager = LocationManager.shared
 
     /// 应用状态
     @State private var appState: AppState = .splash

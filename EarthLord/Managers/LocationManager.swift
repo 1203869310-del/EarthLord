@@ -17,6 +17,10 @@ import UIKit    // UIApplication 需要这个框架
 @MainActor
 final class LocationManager: NSObject, ObservableObject {
 
+    // MARK: - 单例
+
+    static let shared = LocationManager()
+
     // MARK: - Published Properties
 
     /// 用户当前位置坐标
