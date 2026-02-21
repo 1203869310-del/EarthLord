@@ -53,7 +53,7 @@ struct TradeOfferDetailView: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(ApocalypseTheme.textSecondary)
 
-                            Text(""\(msg)"")
+                            Text("「\(msg)」")
                                 .font(.system(size: 14))
                                 .foregroundColor(ApocalypseTheme.textPrimary)
                                 .italic()

@@ -170,7 +170,7 @@ struct OfferCard: View {
 
             // 留言
             if let msg = offer.message, !msg.isEmpty {
-                Text(""\(msg)"")
+                Text("「\(msg)」")
                     .font(.system(size: 12))
                     .foregroundColor(ApocalypseTheme.textSecondary)
                     .italic()

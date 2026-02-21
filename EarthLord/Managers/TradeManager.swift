@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 import Supabase
 
 // MARK: - 交易管理器

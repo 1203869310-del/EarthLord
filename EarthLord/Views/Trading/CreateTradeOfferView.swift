@@ -280,7 +280,7 @@ private struct ItemPickerSheet: View {
     let onSelect: (TradeItem) -> Void
 
     // 选中一个物品后跳转到数量选择
-    private struct QuantityItem: Identifiable {
+    private struct QuantityItem: Identifiable, Hashable {
         let id = UUID()
         let name: String
         let maxQty: Int
