@@ -33,9 +33,9 @@ final class BuildingManager: ObservableObject {
 
     private var decoder: JSONDecoder {
         let d = JSONDecoder()
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         d.dateDecodingStrategy = .custom { decoder in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let container = try decoder.singleValueContainer()
             let string = try container.decode(String.self)
             if let date = formatter.date(from: string) { return date }

@@ -22,6 +22,9 @@ struct EarthLordApp: App {
     /// 语言管理器 - 全局状态
     @StateObject private var languageManager = LanguageManager.shared
 
+    /// 通讯管理器 - 全局状态
+    @StateObject private var communicationManager = CommunicationManager.shared
+
     /// 定位管理器 - 全局状态（用于圈地测试页面监听追踪状态）
     @StateObject private var locationManager = LocationManager()
 
@@ -61,6 +64,7 @@ struct EarthLordApp: App {
                         .transition(.opacity)
                         .environmentObject(authManager)
                         .environmentObject(locationManager)
+                        .environmentObject(communicationManager)
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: appState)
@@ -71,6 +75,10 @@ struct EarthLordApp: App {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         appState = isAuthenticated ? .main : .auth
                     }
+                }
+                // 登录成功时加载通讯设备
+                if isAuthenticated, let userId = authManager.currentUserId {
+                    Task { await CommunicationManager.shared.loadDevices(userId: userId) }
                 }
             }
             // 监听是否需要设置密码（注册流程中）
