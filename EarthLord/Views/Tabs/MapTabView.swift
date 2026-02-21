@@ -78,7 +78,9 @@ struct MapTabView: View {
                 territories: territories,
                 currentUserId: AuthManager.shared.currentUserId?.uuidString,
                 pois: explorationManager.pois,
-                scavengablePOI: explorationManager.currentPOI
+                scavengablePOI: explorationManager.currentPOI,
+                buildings: BuildingManager.shared.playerBuildings,
+                buildingTemplates: BuildingManager.shared.buildingTemplates
             )
             .ignoresSafeArea()
 

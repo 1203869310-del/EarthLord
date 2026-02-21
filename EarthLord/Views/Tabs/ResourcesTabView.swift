@@ -119,7 +119,7 @@ struct ResourcesTabView: View {
                 placeholderView(icon: "map.fill", text: "领地功能开发中")
 
             case .trading:
-                placeholderView(icon: "arrow.left.arrow.right", text: "交易功能开发中")
+                TradingView()
 
             case .none:
                 EmptyView()

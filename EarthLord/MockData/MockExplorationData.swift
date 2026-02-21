@@ -479,6 +479,7 @@ struct MockExplorationData {
         ItemTemplate(name: "面包", category: .food, rarity: .common),
         ItemTemplate(name: "绷带", category: .medical, rarity: .common),
         ItemTemplate(name: "木材", category: .material, rarity: .common),
+        ItemTemplate(name: "石头", category: .material, rarity: .common),
         ItemTemplate(name: "绳子", category: .tool, rarity: .common),
 
         // 稀有物品（rare）

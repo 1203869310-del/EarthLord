@@ -48,6 +48,12 @@ struct MapViewRepresentable: UIViewRepresentable {
     /// 当前可搜刮的 POI（高亮显示）
     var scavengablePOI: POI?
 
+    /// 玩家建筑列表（在主地图上显示建筑标注）
+    var buildings: [PlayerBuilding]
+
+    /// 建筑模板列表（用于获取图标信息）
+    var buildingTemplates: [BuildingTemplate]
+
     // MARK: - UIViewRepresentable
 
     /// 创建 MKMapView
@@ -98,6 +104,9 @@ struct MapViewRepresentable: UIViewRepresentable {
 
         // 绘制 POI 标记
         context.coordinator.drawPOIs(on: mapView, pois: pois, scavengablePOI: scavengablePOI)
+
+        // 绘制建筑标注
+        context.coordinator.drawBuildings(on: mapView, buildings: buildings, templates: buildingTemplates)
     }
 
     /// 创建 Coordinator
@@ -146,8 +155,27 @@ struct MapViewRepresentable: UIViewRepresentable {
         /// 当前 POI 标注列表
         private var currentPOIAnnotations: [POIAnnotation] = []
 
+        /// 当前建筑标注列表
+        private var currentBuildingAnnotations: [BuildingAnnotation] = []
+
         init(_ parent: MapViewRepresentable) {
             self.parent = parent
+        }
+
+        // MARK: - 建筑绘制方法
+
+        /// 绘制建筑标注
+        func drawBuildings(on mapView: MKMapView, buildings: [PlayerBuilding], templates: [BuildingTemplate]) {
+            mapView.removeAnnotations(currentBuildingAnnotations)
+            currentBuildingAnnotations.removeAll()
+
+            for building in buildings {
+                guard building.coordinate != nil else { continue }
+                let tmpl = templates.first { $0.templateId == building.templateId }
+                let ann = BuildingAnnotation(building: building, template: tmpl)
+                mapView.addAnnotation(ann)
+                currentBuildingAnnotations.append(ann)
+            }
         }
 
         // MARK: - POI 绘制方法
@@ -446,6 +474,23 @@ struct MapViewRepresentable: UIViewRepresentable {
                 return annotationView
             }
 
+            // 建筑标注
+            if let buildingAnn = annotation as? BuildingAnnotation {
+                let identifier = "BuildingAnnotation"
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+                if annotationView == nil {
+                    annotationView = MKMarkerAnnotationView(annotation: buildingAnn, reuseIdentifier: identifier)
+                    annotationView?.canShowCallout = true
+                } else {
+                    annotationView?.annotation = buildingAnn
+                }
+                annotationView?.markerTintColor = buildingAnn.building.status == .active
+                    ? .systemYellow
+                    : .systemBlue
+                annotationView?.glyphImage = UIImage(systemName: "building.2.fill")
+                return annotationView
+            }
+
             return nil
         }
 
@@ -519,6 +564,8 @@ extension Notification.Name {
         territories: [],
         currentUserId: nil,
         pois: [],
-        scavengablePOI: nil
+        scavengablePOI: nil,
+        buildings: [],
+        buildingTemplates: []
     )
 }

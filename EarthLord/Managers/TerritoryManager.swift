@@ -584,6 +584,29 @@ final class TerritoryManager: ObservableObject {
     }
 }
 
+// MARK: - 领地重命名
+
+extension TerritoryManager {
+    func updateTerritoryName(territoryId: String, newName: String) async -> Bool {
+        do {
+            try await supabase.from("territories")
+                .update(["name": newName])
+                .eq("id", value: territoryId)
+                .execute()
+            print("[TerritoryManager] ✅ 领地重命名: \(newName)")
+            return true
+        } catch {
+            errorMessage = "重命名失败: \(error.localizedDescription)"
+            return false
+        }
+    }
+}
+
+extension Notification.Name {
+    static let territoryUpdated = Notification.Name("territoryUpdated")
+    static let territoryDeleted = Notification.Name("territoryDeleted")
+}
+
 // MARK: - 预警级别
 enum TerritoryWarningLevel: String {
     case safe = "safe"           // 安全（> 50m）

@@ -75,6 +75,12 @@ struct TerritoryTabView: View {
                 await loadMyTerritories()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .territoryUpdated)) { _ in
+            Task { await loadMyTerritories() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .territoryDeleted)) { _ in
+            Task { await loadMyTerritories() }
+        }
         .sheet(item: $selectedTerritory) { territory in
             TerritoryDetailView(
                 territory: territory,

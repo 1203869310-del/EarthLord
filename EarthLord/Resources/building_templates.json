@@ -1,0 +1,85 @@
+{
+  "version": "1.0.0",
+  "templates": [
+    {
+      "id": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+      "template_id": "campfire",
+      "name": "篝火",
+      "category": "survival",
+      "tier": 1,
+      "description": "基础的篝火设施，提供光亮和温暖，是末世生存的第一步。",
+      "icon": "flame",
+      "required_resources": {
+        "木材": 30,
+        "石头": 20
+      },
+      "build_time_seconds": 60,
+      "max_per_territory": 3,
+      "max_level": 3
+    },
+    {
+      "id": "B2C3D4E5-F6A7-8901-BCDE-F12345678901",
+      "template_id": "shelter",
+      "name": "庇护所",
+      "category": "survival",
+      "tier": 1,
+      "description": "简易庇护所，为幸存者提供遮风挡雨的安全场所。",
+      "icon": "house",
+      "required_resources": {
+        "木材": 50,
+        "石头": 30
+      },
+      "build_time_seconds": 180,
+      "max_per_territory": 1,
+      "max_level": 5
+    },
+    {
+      "id": "C3D4E5F6-A7B8-9012-CDEF-123456789012",
+      "template_id": "storage_small",
+      "name": "小仓库",
+      "category": "storage",
+      "tier": 1,
+      "description": "小型物资仓库，用于存放收集到的资源和物品。",
+      "icon": "archivebox",
+      "required_resources": {
+        "木材": 40,
+        "废金属": 20
+      },
+      "build_time_seconds": 120,
+      "max_per_territory": 3,
+      "max_level": 5
+    },
+    {
+      "id": "D4E5F6A7-B8C9-0123-DEF0-234567890123",
+      "template_id": "farm_simple",
+      "name": "简易农田",
+      "category": "production",
+      "tier": 1,
+      "description": "简单的耕种区域，能够缓慢生产食物资源。",
+      "icon": "leaf",
+      "required_resources": {
+        "木材": 20,
+        "石头": 10
+      },
+      "build_time_seconds": 300,
+      "max_per_territory": 5,
+      "max_level": 3
+    },
+    {
+      "id": "E5F6A7B8-C9D0-1234-EF01-345678901234",
+      "template_id": "solar_panel",
+      "name": "太阳能板",
+      "category": "energy",
+      "tier": 2,
+      "description": "利用太阳能发电的装置，为领地提供稳定的能源供应。",
+      "icon": "sun.max",
+      "required_resources": {
+        "废金属": 60,
+        "钢材": 40
+      },
+      "build_time_seconds": 600,
+      "max_per_territory": 2,
+      "max_level": 3
+    }
+  ]
+}

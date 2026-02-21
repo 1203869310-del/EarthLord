@@ -12,6 +12,13 @@ struct EarthLordApp: App {
     /// 认证管理器 - 全局状态
     @StateObject private var authManager = AuthManager.shared
 
+    init() {
+        // 加载建筑模板（验证用，确认控制台输出 "成功加载 5 个建筑模板"）
+        Task { @MainActor in
+            BuildingManager.shared.loadTemplates()
+        }
+    }
+
     /// 语言管理器 - 全局状态
     @StateObject private var languageManager = LanguageManager.shared
 

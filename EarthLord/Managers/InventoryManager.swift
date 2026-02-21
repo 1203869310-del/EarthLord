@@ -153,6 +153,7 @@ class InventoryManager: ObservableObject {
             ItemDefinition(name: "面包", category: .food, rarity: .common, weight: 0.3, volume: 0.3),
             ItemDefinition(name: "绷带", category: .medical, rarity: .common, weight: 0.05, volume: 0.05),
             ItemDefinition(name: "木材", category: .material, rarity: .common, weight: 2.0, volume: 3.0),
+            ItemDefinition(name: "石头", category: .material, rarity: .common, weight: 3.0, volume: 2.0),
             ItemDefinition(name: "绳子", category: .tool, rarity: .common, weight: 0.8, volume: 0.5),
 
             // 稀有物品（rare）
