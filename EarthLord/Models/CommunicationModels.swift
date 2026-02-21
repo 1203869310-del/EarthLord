@@ -240,3 +240,105 @@ struct SubscribedChannel: Identifiable {
     let subscription: ChannelSubscription
     var id: UUID { channel.id }
 }
+
+// MARK: - 位置点（PostGIS POINT 解析）
+
+struct LocationPoint: Codable {
+    let latitude: Double
+    let longitude: Double
+
+    static func fromPostGIS(_ wkt: String) -> LocationPoint? {
+        let pattern = #"POINT\(([0-9.-]+)\s+([0-9.-]+)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: wkt, range: NSRange(wkt.startIndex..., in: wkt)),
+              let lonRange = Range(match.range(at: 1), in: wkt),
+              let latRange = Range(match.range(at: 2), in: wkt),
+              let longitude = Double(wkt[lonRange]),
+              let latitude = Double(wkt[latRange]) else { return nil }
+        return LocationPoint(latitude: latitude, longitude: longitude)
+    }
+}
+
+// MARK: - 消息元数据
+
+struct MessageMetadata: Codable {
+    let deviceType: String?
+    enum CodingKeys: String, CodingKey { case deviceType = "device_type" }
+}
+
+// MARK: - 频道消息
+
+struct ChannelMessage: Codable, Identifiable {
+    let messageId: UUID
+    let channelId: UUID
+    let senderId: UUID?
+    let senderCallsign: String?
+    let content: String
+    let senderLocation: LocationPoint?
+    let metadata: MessageMetadata?
+    let createdAt: Date
+
+    var id: UUID { messageId }
+
+    enum CodingKeys: String, CodingKey {
+        case messageId       = "message_id"
+        case channelId       = "channel_id"
+        case senderId        = "sender_id"
+        case senderCallsign  = "sender_callsign"
+        case content
+        case senderLocation  = "sender_location"
+        case metadata
+        case createdAt       = "created_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        messageId       = try c.decode(UUID.self, forKey: .messageId)
+        channelId       = try c.decode(UUID.self, forKey: .channelId)
+        senderId        = try c.decodeIfPresent(UUID.self, forKey: .senderId)
+        senderCallsign  = try c.decodeIfPresent(String.self, forKey: .senderCallsign)
+        content         = try c.decode(String.self, forKey: .content)
+        metadata        = try c.decodeIfPresent(MessageMetadata.self, forKey: .metadata)
+
+        // PostGIS POINT 字符串容错解析
+        if let wkt = try? c.decode(String.self, forKey: .senderLocation) {
+            senderLocation = LocationPoint.fromPostGIS(wkt)
+        } else {
+            senderLocation = try c.decodeIfPresent(LocationPoint.self, forKey: .senderLocation)
+        }
+
+        // 多格式日期解析
+        if let s = try? c.decode(String.self, forKey: .createdAt) {
+            createdAt = ChannelMessage.parseDate(s) ?? Date()
+        } else {
+            createdAt = try c.decode(Date.self, forKey: .createdAt)
+        }
+    }
+
+    private static func parseDate(_ s: String) -> Date? {
+        let formats = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ss"
+        ]
+        for fmt in formats {
+            let f = DateFormatter()
+            f.dateFormat = fmt
+            f.locale = Locale(identifier: "en_US_POSIX")
+            if let date = f.date(from: s) { return date }
+        }
+        return nil
+    }
+
+    var timeAgo: String {
+        let i = Date().timeIntervalSince(createdAt)
+        if i < 60    { return "刚刚" }
+        if i < 3600  { return "\(Int(i/60))分钟前" }
+        if i < 86400 { return "\(Int(i/3600))小时前" }
+        let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm"
+        return f.string(from: createdAt)
+    }
+
+    var deviceType: String? { metadata?.deviceType }
+}

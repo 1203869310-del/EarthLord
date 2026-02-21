@@ -28,10 +28,15 @@ final class CommunicationManager: ObservableObject {
     @Published private(set) var channels: [CommunicationChannel] = []
     @Published private(set) var subscribedChannels: [SubscribedChannel] = []
     @Published private(set) var mySubscriptions: [ChannelSubscription] = []
+    @Published var channelMessages: [UUID: [ChannelMessage]] = [:]
+    @Published var isSendingMessage = false
+    @Published var subscribedChannelIds: Set<UUID> = []
 
     // MARK: - 私有属性
 
     private var supabase: SupabaseClient { SupabaseManager.shared.client }
+    private var realtimeChannel: RealtimeChannelV2?
+    private var messageSubscriptionTask: Task<Void, Never>?
 
     private var decoder: JSONDecoder {
         let d = JSONDecoder()
@@ -306,5 +311,113 @@ final class CommunicationManager: ObservableObject {
             errorMessage = "删除频道失败: \(error.localizedDescription)"
             print("[CommunicationManager] ❌ 删除频道失败: \(error)")
         }
+    }
+
+    // MARK: - 消息方法
+
+    /// 加载频道历史消息（最近50条，升序）
+    func loadChannelMessages(channelId: UUID) async {
+        do {
+            let response = try await supabase
+                .from("channel_messages")
+                .select()
+                .eq("channel_id", value: channelId.uuidString)
+                .order("created_at", ascending: true)
+                .limit(50)
+                .execute()
+            let messages = try decoder.decode([ChannelMessage].self, from: response.data)
+            channelMessages[channelId] = messages
+            print("[CommunicationManager] ✅ 加载消息: \(messages.count) 条")
+        } catch {
+            print("[CommunicationManager] ❌ 加载消息失败: \(error)")
+        }
+    }
+
+    /// 通过 RPC 发送消息
+    @discardableResult
+    func sendChannelMessage(channelId: UUID, content: String, deviceType: String? = nil) async -> Bool {
+        isSendingMessage = true
+        defer { isSendingMessage = false }
+        do {
+            var params: [String: AnyJSON] = [
+                "p_channel_id": .string(channelId.uuidString),
+                "p_content":    .string(content)
+            ]
+            if let dt = deviceType {
+                params["p_device_type"] = .string(dt)
+            }
+            try await supabase
+                .rpc("send_channel_message", params: params)
+                .execute()
+            print("[CommunicationManager] ✅ 发送消息成功")
+            return true
+        } catch {
+            print("[CommunicationManager] ❌ 发送消息失败: \(error)")
+            return false
+        }
+    }
+
+    /// 启动 Realtime 订阅（监听 channel_messages 表的 INSERT 事件）
+    func startRealtimeSubscription() {
+        let rt = supabase.realtimeV2.channel("channel_messages_realtime")
+        realtimeChannel = rt
+
+        messageSubscriptionTask = Task { [weak self] in
+            guard let self else { return }
+            let insertions = await rt.postgresChange(InsertAction.self, table: "channel_messages")
+            await rt.subscribe()
+            for await insert in insertions {
+                await self.handleNewMessage(insertion: insert)
+            }
+        }
+        print("[CommunicationManager] ✅ 启动 Realtime 订阅")
+    }
+
+    /// 停止 Realtime 订阅
+    func stopRealtimeSubscription() {
+        messageSubscriptionTask?.cancel()
+        messageSubscriptionTask = nil
+        Task {
+            await realtimeChannel?.unsubscribe()
+            realtimeChannel = nil
+        }
+        print("[CommunicationManager] ✅ 停止 Realtime 订阅")
+    }
+
+    /// 处理收到的新消息
+    func handleNewMessage(insertion: InsertAction) async {
+        do {
+            let dec = JSONDecoder()
+            let message = try insertion.decodeRecord(as: ChannelMessage.self, decoder: dec)
+            guard subscribedChannelIds.contains(message.channelId) else { return }
+            var msgs = channelMessages[message.channelId] ?? []
+            msgs.append(message)
+            channelMessages[message.channelId] = msgs
+            print("[CommunicationManager] ✅ 收到新消息: \(message.content)")
+        } catch {
+            print("[CommunicationManager] ❌ 解析新消息失败: \(error)")
+        }
+    }
+
+    /// 注册对某个频道的消息监听
+    func subscribeToChannelMessages(channelId: UUID) {
+        subscribedChannelIds.insert(channelId)
+        if realtimeChannel == nil {
+            startRealtimeSubscription()
+        }
+    }
+
+    /// 取消对某个频道的消息监听
+    func unsubscribeFromChannelMessages(channelId: UUID) {
+        subscribedChannelIds.remove(channelId)
+        channelMessages.removeValue(forKey: channelId)
+        if subscribedChannelIds.isEmpty {
+            stopRealtimeSubscription()
+        }
+    }
+
+    /// 获取指定频道的消息列表
+    func getMessages(for channelId: UUID) -> [ChannelMessage] {
+        channelMessages[channelId] ?? []
     }
 }

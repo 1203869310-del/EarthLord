@@ -14,6 +14,7 @@ struct ChannelDetailView: View {
 
     @State private var showDeleteConfirm = false
     @State private var isLoading = false
+    @State private var showChat = false
 
     private var isCreator: Bool {
         authManager.currentUserId == channel.creatorId
@@ -119,6 +120,18 @@ struct ChannelDetailView: View {
                             // 非创建者：订阅/取消订阅
                             if isSubscribed {
                                 Button {
+                                    showChat = true
+                                } label: {
+                                    Label("进入频道", systemImage: "bubble.left.and.bubble.right.fill")
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(ApocalypseTheme.primary)
+                                        .foregroundColor(.black)
+                                        .fontWeight(.semibold)
+                                        .cornerRadius(12)
+                                }
+
+                                Button {
                                     Task { await unsubscribe() }
                                 } label: {
                                     HStack {
@@ -184,6 +197,10 @@ struct ChannelDetailView: View {
                 }
             } message: {
                 Text("频道删除后无法恢复，所有订阅者将失去该频道。")
+            }
+            .sheet(isPresented: $showChat) {
+                ChannelChatView(channel: channel)
+                    .environmentObject(authManager)
             }
         }
     }
