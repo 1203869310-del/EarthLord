@@ -1321,6 +1321,7 @@
 
     },
     "通过 Apple 登录" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1331,6 +1332,7 @@
       }
     },
     "通过 Google 登录" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
