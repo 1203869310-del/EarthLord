@@ -433,6 +433,94 @@ final class CommunicationManager: ObservableObject {
         channelMessages[channelId] ?? []
     }
 
+    // MARK: - 官方频道
+
+    /// 官方频道固定 UUID
+    static let officialChannelId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
+    /// 检查是否是官方频道
+    func isOfficialChannel(_ channelId: UUID) -> Bool {
+        channelId == CommunicationManager.officialChannelId
+    }
+
+    /// 确保用户已订阅官方频道（强制订阅）
+    func ensureOfficialChannelSubscribed(userId: UUID) async {
+        let officialId = CommunicationManager.officialChannelId
+        if subscribedChannels.contains(where: { $0.channel.id == officialId }) {
+            print("✅ [官方频道] 已订阅")
+            return
+        }
+        do {
+            let insertData: [String: AnyJSON] = [
+                "user_id":    .string(userId.uuidString),
+                "channel_id": .string(officialId.uuidString)
+            ]
+            try await supabase
+                .from("channel_subscriptions")
+                .insert(insertData)
+                .execute()
+            await loadSubscribedChannels(userId: userId)
+            print("✅ [官方频道] 已自动订阅")
+        } catch {
+            // 可能已订阅，不视为错误
+            print("⚠️ [官方频道] 订阅失败（可能已订阅）: \(error)")
+        }
+    }
+
+    // MARK: - 消息聚合
+
+    /// 频道摘要（用于消息聚合页）
+    struct ChannelSummary: Identifiable {
+        let channel: CommunicationChannel
+        let lastMessage: ChannelMessage?
+        let unreadCount: Int
+        var id: UUID { channel.id }
+    }
+
+    /// 获取所有订阅频道的摘要（官方频道置顶，其余按最新消息时间排序）
+    func getChannelSummaries() -> [ChannelSummary] {
+        subscribedChannels.map { subscribedChannel in
+            let messages = channelMessages[subscribedChannel.channel.id] ?? []
+            return ChannelSummary(
+                channel: subscribedChannel.channel,
+                lastMessage: messages.last,
+                unreadCount: 0
+            )
+        }.sorted { a, b in
+            if a.channel.channelType == .official && b.channel.channelType != .official { return true }
+            if a.channel.channelType != .official && b.channel.channelType == .official { return false }
+            let t1 = a.lastMessage?.createdAt ?? a.channel.createdAt
+            let t2 = b.lastMessage?.createdAt ?? b.channel.createdAt
+            return t1 > t2
+        }
+    }
+
+    /// 加载所有订阅频道的最新 1 条消息（用于消息聚合页预览）
+    func loadAllChannelLatestMessages() async {
+        for subscribedChannel in subscribedChannels {
+            let channelId = subscribedChannel.channel.id
+            do {
+                let response = try await supabase
+                    .from("channel_messages")
+                    .select()
+                    .eq("channel_id", value: channelId.uuidString)
+                    .order("created_at", ascending: false)
+                    .limit(1)
+                    .execute()
+                let messages = try decoder.decode([ChannelMessage].self, from: response.data)
+                if let last = messages.first {
+                    if channelMessages[channelId] == nil {
+                        channelMessages[channelId] = [last]
+                    } else if !channelMessages[channelId]!.contains(where: { $0.id == last.id }) {
+                        channelMessages[channelId]?.insert(last, at: 0)
+                    }
+                }
+            } catch {
+                print("❌ [消息聚合] 加载频道 \(channelId) 最新消息失败: \(error)")
+            }
+        }
+    }
+
     // MARK: - 距离过滤
 
     /// 判断是否应接收该消息（保守策略：信息不完整时显示）

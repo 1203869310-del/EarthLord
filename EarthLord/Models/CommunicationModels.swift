@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // MARK: - 设备类型
 
@@ -189,9 +190,9 @@ enum ChannelType: String, Codable, CaseIterable {
 
 // MARK: - 频道
 
-struct CommunicationChannel: Codable, Identifiable {
+struct CommunicationChannel: Codable, Identifiable, Hashable {
     let id: UUID
-    let creatorId: UUID
+    let creatorId: UUID?    // nil for official channel
     let channelType: ChannelType
     let channelCode: String
     let name: String
@@ -213,6 +214,10 @@ struct CommunicationChannel: Codable, Identifiable {
         case createdAt   = "created_at"
         case updatedAt   = "updated_at"
     }
+
+    // Hashable：仅基于 id，避免 Date 不可哈希问题
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    static func == (lhs: CommunicationChannel, rhs: CommunicationChannel) -> Bool { lhs.id == rhs.id }
 }
 
 // MARK: - 订阅
@@ -259,11 +264,52 @@ struct LocationPoint: Codable {
     }
 }
 
+// MARK: - 消息分类（官方频道专用）
+
+enum MessageCategory: String, Codable, CaseIterable {
+    case survival = "survival"
+    case news     = "news"
+    case mission  = "mission"
+    case alert    = "alert"
+
+    var displayName: String {
+        switch self {
+        case .survival: return "生存指南"
+        case .news:     return "游戏资讯"
+        case .mission:  return "任务发布"
+        case .alert:    return "紧急广播"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .survival: return .green
+        case .news:     return .blue
+        case .mission:  return .orange
+        case .alert:    return .red
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .survival: return "leaf.fill"
+        case .news:     return "newspaper.fill"
+        case .mission:  return "target"
+        case .alert:    return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
 // MARK: - 消息元数据
 
 struct MessageMetadata: Codable {
     let deviceType: String?
-    enum CodingKeys: String, CodingKey { case deviceType = "device_type" }
+    let category: String?
+
+    enum CodingKeys: String, CodingKey {
+        case deviceType = "device_type"
+        case category
+    }
 }
 
 // MARK: - 频道消息
@@ -346,5 +392,11 @@ struct ChannelMessage: Codable, Identifiable {
     var senderDeviceType: DeviceType? {
         guard let raw = metadata?.deviceType else { return nil }
         return DeviceType(rawValue: raw)
+    }
+
+    /// 消息分类（官方频道专用）
+    var category: MessageCategory? {
+        guard let raw = metadata?.category else { return nil }
+        return MessageCategory(rawValue: raw)
     }
 }

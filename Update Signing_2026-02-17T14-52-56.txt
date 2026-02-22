@@ -1,0 +1,15 @@
+
+Showing All Messages
+
+Update provisioning for EarthLord
+
+The operation couldn’t be completed. Unable to log in with account '568980683@qq.com'. (The login details for account '568980683@qq.com' were rejected.)
+
+Diagnose problem
+Xcode couldn't find any iOS App Development provisioning profiles matching 'com.feixiang.EarthLord'.
+
+The operation couldn’t be completed. Unable to log in with account '568980683@qq.com'. (The login details for account '568980683@qq.com' were rejected.)
+
+
+
+Signing update finished    2026/2/17, 14:52    0.1 seconds

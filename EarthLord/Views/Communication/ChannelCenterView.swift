@@ -13,6 +13,7 @@ struct ChannelCenterView: View {
     @State private var selectedTab = 0
     @State private var showCreateSheet = false
     @State private var selectedChannel: CommunicationChannel?
+    @State private var selectedOfficialChannel: CommunicationChannel?
     @State private var searchText = ""
 
     var filteredChannels: [CommunicationChannel] {
@@ -68,6 +69,7 @@ struct ChannelCenterView: View {
                 await communicationManager.loadPublicChannels()
                 if let uid = authManager.currentUserId {
                     await communicationManager.loadSubscribedChannels(userId: uid)
+                    await communicationManager.ensureOfficialChannelSubscribed(userId: uid)
                 }
             }
         }
@@ -78,6 +80,9 @@ struct ChannelCenterView: View {
         .sheet(item: $selectedChannel) { channel in
             ChannelDetailView(channel: channel)
                 .environmentObject(authManager)
+        }
+        .sheet(item: $selectedOfficialChannel) { channel in
+            OfficialChannelDetailView(channel: channel)
         }
     }
 
@@ -166,7 +171,11 @@ struct ChannelCenterView: View {
 
     private func channelRow(channel: CommunicationChannel, isSubscribed: Bool) -> some View {
         Button {
-            selectedChannel = channel
+            if channel.channelType == .official {
+                selectedOfficialChannel = channel
+            } else {
+                selectedChannel = channel
+            }
         } label: {
             HStack(spacing: 12) {
                 // 频道图标
