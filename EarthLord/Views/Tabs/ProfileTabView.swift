@@ -15,6 +15,7 @@ struct ProfileTabView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
+                // iPad 上内容居中限宽，避免大片空白
                 VStack(spacing: 24) {
                     // 头像和用户信息
                     profileHeader
@@ -29,6 +30,8 @@ struct ProfileTabView: View {
                     logoutButton
                 }
                 .padding()
+                .frame(maxWidth: horizontalSizeClass == .regular ? 600 : .infinity)
+                .frame(maxWidth: .infinity)
             }
             .background(ApocalypseTheme.background)
             .navigationTitle("个人中心")

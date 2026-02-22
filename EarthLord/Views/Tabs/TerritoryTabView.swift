@@ -12,6 +12,7 @@ struct TerritoryTabView: View {
     // MARK: - State
 
     @StateObject private var territoryManager = TerritoryManager.shared
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// 我的领地列表
     @State private var myTerritories: [Territory] = []
@@ -114,6 +115,7 @@ struct TerritoryTabView: View {
                 .multilineTextAlignment(.center)
         }
         .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Territory List View
@@ -133,6 +135,9 @@ struct TerritoryTabView: View {
                 }
             }
             .padding()
+            // iPad 居中限宽
+            .frame(maxWidth: horizontalSizeClass == .regular ? 700 : .infinity)
+            .frame(maxWidth: .infinity)
         }
     }
 
