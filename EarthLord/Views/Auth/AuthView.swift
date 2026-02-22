@@ -84,7 +84,7 @@ struct AuthView: View {
         .sheet(isPresented: $showForgotPassword) {
             forgotPasswordSheet
         }
-        .onChange(of: authManager.errorMessage) { _, newValue in
+        .onChange(of: authManager.errorMessage) { newValue in
             if let message = newValue {
                 showToastMessage(message)
             }
@@ -779,7 +779,7 @@ struct OTPInputView: View {
                 .textContentType(.oneTimeCode)
                 .focused($isFocused)
                 .opacity(0)
-                .onChange(of: code) { _, newValue in
+                .onChange(of: code) { newValue in
                     // 限制长度
                     if newValue.count > codeLength {
                         code = String(newValue.prefix(codeLength))

@@ -35,27 +35,28 @@ struct PTTCallView: View {
         ZStack {
             ApocalypseTheme.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                headerView
+            ScrollView {
+                VStack(spacing: 0) {
+                    headerView
 
-                if let channel = selectedChannel {
-                    frequencyCard(channel: channel)
+                    if let channel = selectedChannel {
+                        frequencyCard(channel: channel)
+                    }
+
+                    channelTabBar
+
+                    messageInputArea
+                        .padding(.top, 8)
+
+                    pttButton
+                        .padding(.top, 24)
+
+                    Text("长按按钮发送呼叫，松开结束")
+                        .font(.caption)
+                        .foregroundColor(ApocalypseTheme.textSecondary)
+                        .padding(.top, 12)
+                        .padding(.bottom, 20)
                 }
-
-                channelTabBar
-
-                Spacer()
-
-                messageInputArea
-
-                pttButton
-
-                Spacer()
-
-                Text("长按按钮发送呼叫，松开结束")
-                    .font(.caption)
-                    .foregroundColor(ApocalypseTheme.textSecondary)
-                    .padding(.bottom, 20)
             }
         }
         .onAppear {
@@ -170,10 +171,22 @@ struct PTTCallView: View {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $messageContent)
                     .frame(height: 80)
-                    .padding(12)
+                    .padding(8)
+                    .scrollContentBackground(.hidden)
                     .background(ApocalypseTheme.cardBackground)
                     .cornerRadius(12)
                     .foregroundColor(ApocalypseTheme.textPrimary)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("完成") {
+                                UIApplication.shared.sendAction(
+                                    #selector(UIResponder.resignFirstResponder),
+                                    to: nil, from: nil, for: nil)
+                            }
+                            .foregroundColor(ApocalypseTheme.primary)
+                        }
+                    }
 
                 if messageContent.isEmpty {
                     Text("输入您的呼叫内容，然后按住PTT按钮发送")
@@ -190,47 +203,45 @@ struct PTTCallView: View {
     // MARK: - PTT 按钮
 
     private var pttButton: some View {
-        Button(action: {}) {
-            VStack(spacing: 8) {
-                Image(systemName: isPressingPTT ? "waveform" : "mic.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(.white)
+        let activeColors: [Color] = [ApocalypseTheme.primary, ApocalypseTheme.primary.opacity(0.7)]
+        let inactiveColors: [Color] = [Color.gray, Color.gray.opacity(0.7)]
 
-                Text(isPressingPTT ? "发送中..." : "按住发送")
-                    .font(.headline)
-                    .foregroundColor(.white)
-            }
-            .frame(width: 120, height: 120)
-            .background(
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: isPressingPTT
-                                ? [Color.gray, Color.gray.opacity(0.7)]
-                                : (canSend
-                                    ? [ApocalypseTheme.primary, ApocalypseTheme.primary.opacity(0.7)]
-                                    : [Color.gray, Color.gray.opacity(0.7)]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            )
-            .shadow(
-                color: isPressingPTT ? Color.gray.opacity(0.5) : ApocalypseTheme.primary.opacity(0.5),
-                radius: 10
-            )
-            .scaleEffect(isPressingPTT ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: isPressingPTT)
+        return VStack(spacing: 8) {
+            Image(systemName: isPressingPTT ? "waveform" : "mic.fill")
+                .font(.system(size: 36))
+                .foregroundColor(.white)
+
+            Text(isPressingPTT ? "发送中..." : "按住发送")
+                .font(.headline)
+                .foregroundColor(.white)
         }
-        .disabled(!canSend)
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.1)
+        .frame(width: 120, height: 120)
+        .background(
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: isPressingPTT ? inactiveColors : (canSend ? activeColors : inactiveColors),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        )
+        .shadow(
+            color: isPressingPTT ? Color.gray.opacity(0.5) : ApocalypseTheme.primary.opacity(0.5),
+            radius: 10
+        )
+        .scaleEffect(isPressingPTT ? 0.95 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isPressingPTT)
+        .opacity(canSend ? 1.0 : 0.5)
+        .gesture(
+            DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    guard canSend else { return }
+                    guard canSend, !isPressingPTT else { return }
                     isPressingPTT = true
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 }
                 .onEnded { _ in
+                    guard isPressingPTT else { return }
                     isPressingPTT = false
                     sendPTTMessage()
                 }

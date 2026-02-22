@@ -120,7 +120,7 @@ struct TerritoryTestView: View {
                 .padding(.vertical, 8)
             }
             // 日志更新时自动滚动到底部
-            .onChange(of: logger.logText) { _, _ in
+            .onChange(of: logger.logText) { _ in
                 if let lastEntry = logger.logs.last {
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(lastEntry.id, anchor: .bottom)

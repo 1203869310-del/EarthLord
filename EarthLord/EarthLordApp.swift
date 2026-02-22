@@ -69,7 +69,7 @@ struct EarthLordApp: App {
             }
             .animation(.easeInOut(duration: 0.3), value: appState)
             // 监听认证状态变化
-            .onChange(of: authManager.isAuthenticated) { _, isAuthenticated in
+            .onChange(of: authManager.isAuthenticated) { isAuthenticated in
                 // 只在非启动状态下响应认证变化
                 if appState != .splash {
                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -82,7 +82,7 @@ struct EarthLordApp: App {
                 }
             }
             // 监听是否需要设置密码（注册流程中）
-            .onChange(of: authManager.needsPasswordSetup) { _, needsSetup in
+            .onChange(of: authManager.needsPasswordSetup) { needsSetup in
                 // 如果在主界面但需要设置密码，跳转到认证页面
                 if needsSetup && appState == .main {
                     withAnimation(.easeInOut(duration: 0.3)) {

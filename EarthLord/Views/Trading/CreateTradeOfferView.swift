@@ -290,6 +290,7 @@ private struct ItemPickerSheet: View {
     @State private var searchText = ""
     @State private var selectedCategory: ItemCategory? = nil
     @State private var quantityItem: QuantityItem? = nil
+    @State private var showingQuantityPicker = false
     @Environment(\.dismiss) private var dismissSheet
 
     // 根据模式返回可选物品列表
@@ -373,6 +374,7 @@ private struct ItemPickerSheet: View {
                                     name: item.name,
                                     maxQty: item.available
                                 )
+                                showingQuantityPicker = true
                             }
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(ApocalypseTheme.primary)
@@ -394,14 +396,16 @@ private struct ItemPickerSheet: View {
                 }
             }
             // 导航到数量选择页
-            .navigationDestination(item: $quantityItem) { qItem in
-                QuantityPickerView(
-                    itemName: qItem.name,
-                    maxQty: qItem.maxQty,
-                    isInventoryBound: target == .offering
-                ) { qty in
-                    onSelect(TradeItem(name: qItem.name, quantity: qty))
-                    dismissSheet()
+            .navigationDestination(isPresented: $showingQuantityPicker) {
+                if let qItem = quantityItem {
+                    QuantityPickerView(
+                        itemName: qItem.name,
+                        maxQty: qItem.maxQty,
+                        isInventoryBound: target == .offering
+                    ) { qty in
+                        onSelect(TradeItem(name: qItem.name, quantity: qty))
+                        dismissSheet()
+                    }
                 }
             }
         }
