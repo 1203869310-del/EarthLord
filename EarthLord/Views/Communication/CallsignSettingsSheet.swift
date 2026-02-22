@@ -23,7 +23,7 @@ struct CallsignSettingsSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 ApocalypseTheme.background.ignoresSafeArea()
 

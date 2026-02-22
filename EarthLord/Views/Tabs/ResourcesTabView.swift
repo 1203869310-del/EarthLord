@@ -40,19 +40,21 @@ struct ResourcesTabView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
-                // 顶部栏
-                topBar
-
-                // 分段选择器
-                segmentedControl
+                // 顶部栏 + 分段选择器（统一卡片背景，与通讯页风格一致）
+                VStack(spacing: 0) {
+                    topBar
+                    segmentedControl
+                    Divider().background(ApocalypseTheme.textSecondary.opacity(0.3))
+                }
+                .background(ApocalypseTheme.cardBackground)
 
                 // 内容区域
                 contentArea
             }
             .background(ApocalypseTheme.background.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -81,23 +83,36 @@ struct ResourcesTabView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(ApocalypseTheme.background)
+        .background(ApocalypseTheme.cardBackground)
     }
 
     // MARK: - Segmented Control
 
-    /// 分段选择器
+    /// 分段选择器（风格与通讯页一致）
     private var segmentedControl: some View {
-        Picker("", selection: $selectedSegment) {
-            ForEach(Segment.allCases, id: \.rawValue) { segment in
-                Text(segment.title)
-                    .tag(segment.rawValue)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(Segment.allCases, id: \.rawValue) { segment in
+                    Button(action: { selectedSegment = segment.rawValue }) {
+                        Text(segment.title)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(selectedSegment == segment.rawValue
+                                ? ApocalypseTheme.primary
+                                : ApocalypseTheme.textSecondary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(selectedSegment == segment.rawValue
+                                ? ApocalypseTheme.primary.opacity(0.15)
+                                : Color.clear)
+                            .cornerRadius(8)
+                    }
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .pickerStyle(SegmentedPickerStyle())
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(ApocalypseTheme.background)
+        .background(ApocalypseTheme.cardBackground)
     }
 
     // MARK: - Content Area

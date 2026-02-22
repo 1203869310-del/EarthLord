@@ -10,6 +10,7 @@ import SwiftUI
 struct ProfileTabView: View {
     @StateObject private var authManager = AuthManager.shared
     @State private var showLogoutAlert = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         NavigationStack {
@@ -32,6 +33,9 @@ struct ProfileTabView: View {
             .background(ApocalypseTheme.background)
             .navigationTitle("个人中心")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(ApocalypseTheme.cardBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .alert("确认登出", isPresented: $showLogoutAlert) {
             Button("取消", role: .cancel) {}
@@ -47,7 +51,10 @@ struct ProfileTabView: View {
 
     // MARK: - 头像和用户信息
     private var profileHeader: some View {
-        VStack(spacing: 16) {
+        let avatarSize: CGFloat = horizontalSizeClass == .regular ? 80 : 72
+        let avatarFontSize: CGFloat = horizontalSizeClass == .regular ? 30 : 28
+
+        return VStack(spacing: 12) {
             // 头像
             ZStack {
                 Circle()
@@ -58,10 +65,10 @@ struct ProfileTabView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 100, height: 100)
+                    .frame(width: avatarSize, height: avatarSize)
 
                 Text(avatarText)
-                    .font(.system(size: 40, weight: .bold))
+                    .font(.system(size: avatarFontSize, weight: .bold))
                     .foregroundColor(.white)
             }
             .shadow(color: ApocalypseTheme.primary.opacity(0.3), radius: 10)
@@ -69,13 +76,17 @@ struct ProfileTabView: View {
             // 用户名/邮箱
             VStack(spacing: 4) {
                 Text(displayName)
-                    .font(.title2)
+                    .font(.headline)
                     .fontWeight(.bold)
                     .foregroundColor(ApocalypseTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
                 Text(authManager.currentUserEmail ?? "未知邮箱")
                     .font(.subheadline)
                     .foregroundColor(ApocalypseTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
 
             // 用户ID
@@ -89,7 +100,7 @@ struct ProfileTabView: View {
                     .cornerRadius(12)
             }
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, 16)
     }
 
     // MARK: - 统计数据

@@ -25,7 +25,7 @@ struct CreateChannelSheet: View {
     private let creatableTypes: [ChannelType] = [.public_, .walkie, .camp, .satellite]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
 

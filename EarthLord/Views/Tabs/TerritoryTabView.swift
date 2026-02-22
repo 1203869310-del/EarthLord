@@ -63,9 +63,10 @@ struct TerritoryTabView: View {
                 }
             }
             .navigationTitle("我的领地")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(ApocalypseTheme.cardBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .refreshable {
                 await loadMyTerritories()
             }
