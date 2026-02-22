@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AuthenticationServices
 
 // MARK: - 认证页面
 struct AuthView: View {
@@ -31,6 +32,9 @@ struct AuthView: View {
     @State private var resetPassword = ""
     @State private var resetConfirmPassword = ""
     @State private var resetStep: Int = 1
+
+    // Apple Sign In nonce（每次点击时生成）
+    @State private var currentNonce: String = ""
 
     // 倒计时
     @State private var countdown: Int = 0
@@ -410,47 +414,40 @@ struct AuthView: View {
         }
     }
 
-    // MARK: - 第三方登录按钮
+    // MARK: - 第三方登录按钮（Sign in with Apple）
     private var socialLoginButtons: some View {
-        VStack(spacing: 12) {
-            // Apple 登录
-            Button {
-                showToastMessage("Apple 登录即将开放")
-            } label: {
-                HStack {
-                    Image(systemName: "apple.logo")
-                        .font(.title2)
-                    Text("通过 Apple 登录")
-                        .fontWeight(.medium)
+        SignInWithAppleButton(.signIn) { request in
+            // 每次请求生成新 nonce
+            let nonce = authManager.generateNonce()
+            currentNonce = nonce
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = authManager.sha256(nonce)  // 哈希版本给 Apple
+        } onCompletion: { result in
+            switch result {
+            case .success(let authorization):
+                guard
+                    let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                    let tokenData = credential.identityToken,
+                    let idToken = String(data: tokenData, encoding: .utf8)
+                else {
+                    showToastMessage("Apple 登录失败：无法获取凭证")
+                    return
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.black)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
-            }
-
-            // Google 登录
-            Button {
-                showToastMessage("Google 登录即将开放")
-            } label: {
-                HStack {
-                    Image(systemName: "g.circle.fill")
-                        .font(.title2)
-                    Text("通过 Google 登录")
-                        .fontWeight(.medium)
+                Task {
+                    // 传入原始 nonce（未哈希），Supabase 用于验证
+                    await authManager.signInWithApple(idToken: idToken, nonce: currentNonce)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.white)
-                .foregroundColor(.black)
-                .cornerRadius(12)
+            case .failure(let error):
+                // 用户取消不显示错误；其他错误给提示
+                let nsError = error as NSError
+                if nsError.code != ASAuthorizationError.canceled.rawValue {
+                    showToastMessage("Apple 登录失败：\(error.localizedDescription)")
+                }
             }
         }
+        .signInWithAppleButtonStyle(.black)
+        .frame(height: 50)
+        .cornerRadius(12)
     }
 
     // MARK: - 加载遮罩

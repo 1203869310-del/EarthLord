@@ -9,6 +9,8 @@ import Foundation
 import Combine
 import Supabase
 import Auth
+import AuthenticationServices
+import CryptoKit
 
 // MARK: - 认证管理器
 /// 管理用户认证流程，包括注册、登录、找回密码
@@ -374,24 +376,45 @@ final class AuthManager: ObservableObject {
         isLoading = false
     }
 
-    // MARK: - 第三方登录（预留）
+    // MARK: - Sign in with Apple
 
-    /// Apple 登录
-    /// - TODO: 实现 Apple Sign In
-    func signInWithApple() async {
-        // TODO: 实现 Apple Sign In
-        // 1. 使用 AuthenticationServices 获取 Apple ID 凭证
-        // 2. 调用 supabase.auth.signInWithIdToken(credentials:)
-        errorMessage = "Apple 登录功能开发中"
+    /// 使用 Apple 身份令牌登录 Supabase
+    /// - Parameters:
+    ///   - idToken: 从 ASAuthorizationAppleIDCredential 获取的 identityToken 字符串
+    ///   - nonce: 与请求时使用的原始随机 nonce（未哈希）
+    func signInWithApple(idToken: String, nonce: String) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let session = try await supabase.auth.signInWithIdToken(
+                credentials: .init(
+                    provider: .apple,
+                    idToken: idToken,
+                    nonce: nonce
+                )
+            )
+            currentUser = session.user
+            isAuthenticated = true
+        } catch {
+            errorMessage = handleAuthError(error)
+        }
+
+        isLoading = false
     }
 
-    /// Google 登录
-    /// - TODO: 实现 Google Sign In
-    func signInWithGoogle() async {
-        // TODO: 实现 Google Sign In
-        // 1. 使用 GoogleSignIn SDK 获取 ID Token
-        // 2. 调用 supabase.auth.signInWithIdToken(credentials:)
-        errorMessage = "Google 登录功能开发中"
+    /// 生成 Apple Sign In 所需的随机 nonce（32字节，base62编码）
+    func generateNonce() -> String {
+        var randomBytes = [UInt8](repeating: 0, count: 32)
+        SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        return String(randomBytes.map { charset[Int($0) % charset.count] })
+    }
+
+    /// 对 nonce 做 SHA256 哈希（传给 Apple 的 ID Request）
+    func sha256(_ input: String) -> String {
+        let hashedData = SHA256.hash(data: Data(input.utf8))
+        return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - 其他方法
@@ -477,19 +500,18 @@ final class AuthManager: ObservableObject {
             let session = try await supabase.auth.session
             currentUser = session.user
 
-            // 检查用户是否通过邮箱密码注册（有 email identity）
-            // 只有完成了密码设置的用户才能自动登录
-            var hasEmailProvider = false
-            if case .string(let provider) = session.user.appMetadata["provider"] {
-                hasEmailProvider = provider == "email"
+            // 支持的登录方式：email（邮箱密码）、apple（Apple ID）
+            var provider = ""
+            if case .string(let p) = session.user.appMetadata["provider"] {
+                provider = p
             }
             let hasIdentities = !(session.user.identities?.isEmpty ?? true)
 
-            if hasEmailProvider && hasIdentities {
-                // 有完整的邮箱密码账户，自动登录
+            if (provider == "email" || provider == "apple") && hasIdentities {
+                // 完整账户，自动登录
                 isAuthenticated = true
             } else {
-                // 可能是 OTP 验证但未设置密码的用户，需要重新认证
+                // OTP 验证但未设置密码的中间态，需要重新认证
                 isAuthenticated = false
             }
         } catch {
